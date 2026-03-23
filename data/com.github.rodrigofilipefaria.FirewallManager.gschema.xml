@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="firewall_manager">
+	<schema id="com.github.rodrigofilipefaria.FirewallManager" path="/com/github/rodrigofilipefaria/FirewallManager/">
+	</schema>
+</schemalist>

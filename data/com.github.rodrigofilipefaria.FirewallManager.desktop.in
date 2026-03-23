@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Firewall_manager
+Exec=firewall_manager
+Icon=com.github.rodrigofilipefaria.FirewallManager
+Terminal=false
+Type=Application
+Categories=Utility;
+Keywords=GTK;
+StartupNotify=true
+DBusActivatable=true

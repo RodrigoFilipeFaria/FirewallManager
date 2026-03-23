@@ -1,0 +1,6 @@
+# List of source files containing translatable strings.
+# Please keep this file sorted alphabetically.
+data/com.github.rodrigofilipefaria.FirewallManager.desktop.in
+data/com.github.rodrigofilipefaria.FirewallManager.metainfo.xml.in
+data/com.github.rodrigofilipefaria.FirewallManager.gschema.xml
+src/window.ui
