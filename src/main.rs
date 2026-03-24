@@ -21,6 +21,7 @@
 mod application;
 mod config;
 mod window;
+pub mod firewall_dbus_api;
 
 use self::application::FirewallManagerApplication;
 use self::window::FirewallManagerWindow;
@@ -30,7 +31,8 @@ use gettextrs::{bind_textdomain_codeset, bindtextdomain, textdomain};
 use gtk::{gio, glib};
 use gtk::prelude::*;
 
-fn main() -> glib::ExitCode {
+#[tokio::main]
+async fn main() -> glib::ExitCode {
     // Set up gettext translations
     bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR).expect("Unable to bind the text domain");
     bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8")

@@ -1,0 +1,9 @@
+/home/rodrigofilipefaria/Documentos/FirewallManager/target/debug/deps/ordered_stream-3ab7a5cad50707fe.d: /home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/lib.rs /home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/adapters.rs /home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/join.rs /home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/multi.rs /home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/../README.md
+
+/home/rodrigofilipefaria/Documentos/FirewallManager/target/debug/deps/libordered_stream-3ab7a5cad50707fe.rmeta: /home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/lib.rs /home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/adapters.rs /home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/join.rs /home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/multi.rs /home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/../README.md
+
+/home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/lib.rs:
+/home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/adapters.rs:
+/home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/join.rs:
+/home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/multi.rs:
+/home/rodrigofilipefaria/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ordered-stream-0.2.0/src/../README.md:

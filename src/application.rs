@@ -98,7 +98,7 @@ impl FirewallManagerApplication {
     fn show_about(&self) {
         let window = self.active_window().unwrap();
         let about = adw::AboutDialog::builder()
-            .application_name("Firewall_manager")
+            .application_name("Firewall Manager")
             .application_icon("com.github.rodrigofilipefaria.FirewallManager")
             .developer_name("Rodrigo Filipe Faria")
             .version(VERSION)
