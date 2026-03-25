@@ -43,6 +43,15 @@ trait FirewalldZone {
 
     #[zbus(name = "getZoneSettings2")]
     fn get_zone_settings(&self, zone: &str) -> zbus::Result<HashMap<String, OwnedValue>>;
+
+    #[zbus(name = "getInterfaces")]
+    fn get_interfaces(&self, zone: &str) -> zbus::Result<Vec<String>>;
+
+    #[zbus(name = "getZoneOfInterface")]
+    fn get_zone_of_interface(&self, interface: &str) -> zbus::Result<String>;
+
+    #[zbus(name = "changeZoneOfInterface")]
+    fn set_zone_interface(&self, zone : &str, interface: &str) -> zbus::Result<String>;
 }
 
 #[proxy(
@@ -110,8 +119,6 @@ trait Systemd {
     fn start_unit(&self, name: &str, mode: &str) -> zbus::Result<OwnedObjectPath>;
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
-
 pub async fn fetch_default_zone() -> Result<String> {
     let connection = Connection::system().await?;
     let proxy = FirewalldProxy::new(&connection).await?;
@@ -135,6 +142,35 @@ pub async fn fetch_zone_settings(zone_name: &str) -> Result<HashMap<String, Owne
     let proxy = FirewalldZoneProxy::new(&connection).await?;
     proxy.get_zone_settings(zone_name).await
 }
+
+pub async fn change_zone_interface(zone : &str, interface: &str) -> Result<String> {
+    let connection = Connection::system().await?;
+    let proxy = FirewalldZoneProxy::new(&connection).await?;
+    let change = proxy.set_zone_interface(zone, interface).await?;
+    Ok(change)
+}
+
+pub async fn fetch_interfaces() -> Result<Vec<String>> {
+    let mut interfaces = Vec::new();
+    if let Ok(entries) = std::fs::read_dir("/sys/class/net") {
+        for entry in entries.flatten() {
+            if let Ok(name) = entry.file_name().into_string() {
+                if name != "lo" {
+                    interfaces.push(name);
+                }
+            }
+        }
+    }
+    interfaces.sort();
+    Ok(interfaces)
+}
+
+pub async fn fetch_zone_of_interface(interface: &str) -> Result<String> {
+    let connection = Connection::system().await?;
+    let proxy = FirewalldZoneProxy::new(&connection).await?;
+    proxy.get_zone_of_interface(interface).await
+}
+
 
 pub async fn fetch_services() -> Result<Vec<String>> {
     let connection = Connection::system().await?;

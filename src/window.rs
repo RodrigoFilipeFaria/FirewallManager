@@ -31,6 +31,9 @@ mod imp {
         pub services_listbox: TemplateChild<gtk::ListBox>,
         #[template_child]
         pub add_service_button: TemplateChild<gtk::Button>,
+
+        #[template_child]
+        pub interfaces_listbox: TemplateChild<gtk::ListBox>,
     }
 
     #[glib::object_subclass]
@@ -62,8 +65,8 @@ mod imp {
             let details_page = self.details_page.clone();
             let services_listbox = self.services_listbox.clone();
             let add_service_button = self.add_service_button.clone();
+            let interfaces_listbox = self.interfaces_listbox.clone();
 
-            // ── Init: state + zones ───────────────────────────────────────
             glib::spawn_future_local(glib::clone!(
                 #[strong] state_label,
                 #[strong] status_page,
@@ -72,6 +75,7 @@ mod imp {
                 #[strong] settings_listbox,
                 #[strong] details_page,
                 #[strong] load_button,
+                #[strong] interfaces_listbox,
                 async move {
                     match crate::firewall_dbus_api::fetch_state().await {
                         Ok(state) => {
@@ -98,12 +102,14 @@ mod imp {
 
                     match crate::firewall_dbus_api::fetch_default_zone().await {
                         Ok(zone) => {
-                            status_page.set_description(Some(&format!("Your principal zone is: {}", zone)));
+                            status_page.set_description(Some(&format!("Fallback Zone: {}", zone)));
                         }
                         Err(e) => {
                             status_page.set_description(Some(&format!("Error reading zone: {}", e)));
                         }
                     }
+
+                    reload_interfaces(&interfaces_listbox).await;
 
                     while let Some(child) = zones_listbox.first_child() {
                         zones_listbox.remove(&child);
@@ -471,3 +477,104 @@ fn parse_ports(input: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+async fn reload_interfaces(listbox: &gtk::ListBox) {
+    while let Some(child) = listbox.first_child() {
+        listbox.remove(&child);
+    }
+
+    match crate::firewall_dbus_api::fetch_interfaces().await {
+        Ok(interfaces) => {
+            if interfaces.is_empty() {
+                let empty_row = adw::ActionRow::builder()
+                    .title("No interfaces found.")
+                    .build();
+                listbox.append(&empty_row);
+                return;
+            }
+
+            for iface in interfaces {
+                let current_zone = crate::firewall_dbus_api::fetch_zone_of_interface(&iface)
+                    .await
+                    .unwrap_or_else(|_| "Unknown".to_string());
+
+                let row = adw::ActionRow::builder()
+                    .title(&iface)
+                    .subtitle(&format!("Current Zone: {}", current_zone))
+                    .activatable(false)
+                    .build();
+
+                let change_btn = gtk::Button::builder()
+                    .label("Change Zone")
+                    .valign(gtk::Align::Center)
+                    .css_classes(["flat"])
+                    .build();
+
+                let list_clone = listbox.clone();
+                let iface_clone = iface.clone();
+                let zone_clone = current_zone.clone();
+
+                change_btn.connect_clicked(move |_| {
+                    show_change_zone_dialog(iface_clone.clone(), zone_clone.clone(), list_clone.clone());
+                });
+
+                row.add_suffix(&change_btn);
+                listbox.append(&row);
+            }
+        }
+        Err(e) => {
+            let err_row = adw::ActionRow::builder()
+                .title(&format!("Error fetching interfaces: {}", e))
+                .build();
+            listbox.append(&err_row);
+        }
+    }
+}
+
+fn show_change_zone_dialog(interface: String, current_zone: String, listbox: gtk::ListBox) {
+    glib::spawn_future_local(async move {
+        let zones = crate::firewall_dbus_api::fetch_zones().await.unwrap_or_default();
+
+        let dialog = adw::AlertDialog::builder()
+            .heading(&format!("Change Zone for {}", interface))
+            .build();
+
+        let zone_strs: Vec<&str> = zones.iter().map(|s| s.as_str()).collect();
+        let combo = gtk::DropDown::from_strings(&zone_strs);
+
+        if let Some(pos) = zones.iter().position(|z| z == &current_zone) {
+            combo.set_selected(pos as u32);
+        }
+
+        let content_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .margin_top(8).margin_bottom(8).margin_start(8).margin_end(8)
+            .build();
+
+        let label = gtk::Label::builder()
+            .label("Select a new zone:")
+            .halign(gtk::Align::Start)
+            .margin_bottom(8)
+            .build();
+
+        content_box.append(&label);
+        content_box.append(&combo);
+        dialog.set_extra_child(Some(&content_box));
+
+        dialog.add_response("cancel", "Cancel");
+        dialog.add_response("save", "Save");
+        dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("save"));
+        dialog.set_close_response("cancel");
+
+        let response = dialog.choose_future(&listbox).await;
+        if response == "save" {
+            let selected_idx = combo.selected();
+            if let Some(new_zone) = zones.get(selected_idx as usize) {
+                match crate::firewall_dbus_api::change_zone_interface(new_zone, &interface).await {
+                    Ok(_) => reload_interfaces(&listbox).await,
+                    Err(e) => eprintln!("Error changing zone: {}", e),
+                }
+            }
+        }
+    });
+}
