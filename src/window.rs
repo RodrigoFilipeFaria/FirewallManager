@@ -26,6 +26,11 @@ mod imp {
         pub back_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub details_page: TemplateChild<adw::StatusPage>,
+
+        #[template_child]
+        pub services_listbox: TemplateChild<gtk::ListBox>,
+        #[template_child]
+        pub add_service_button: TemplateChild<gtk::Button>,
     }
 
     #[glib::object_subclass]
@@ -55,7 +60,10 @@ mod imp {
             let settings_listbox = self.settings_listbox.clone();
             let back_button = self.back_button.clone();
             let details_page = self.details_page.clone();
+            let services_listbox = self.services_listbox.clone();
+            let add_service_button = self.add_service_button.clone();
 
+            // ── Init: state + zones ───────────────────────────────────────
             glib::spawn_future_local(glib::clone!(
                 #[strong] state_label,
                 #[strong] status_page,
@@ -134,15 +142,20 @@ mod imp {
                                             Ok(settings) => {
                                                 for (key, variant) in settings {
                                                     if let Ok(val) = String::try_from(variant.clone()) {
-                                                        let row = adw::ActionRow::builder().title(&key).subtitle(&val).build();
+                                                        let row = adw::ActionRow::builder()
+                                                            .title(&key)
+                                                            .subtitle(&val)
+                                                            .build();
                                                         inner_settings.append(&row);
-                                                    } else if let Ok(items) = <Vec<String>>::try_from(variant.clone()) {
+                                                    } else if let Ok(items) = Vec::<String>::try_from(variant.clone()) {
                                                         let expander = adw::ExpanderRow::builder()
                                                             .title(&key)
                                                             .subtitle(&format!("{} items", items.len()))
                                                             .build();
                                                         for item in items {
-                                                            let sub = adw::ActionRow::builder().title(&item).build();
+                                                            let sub = adw::ActionRow::builder()
+                                                                .title(&item)
+                                                                .build();
                                                             expander.add_row(&sub);
                                                         }
                                                         inner_settings.append(&expander);
@@ -150,10 +163,14 @@ mod imp {
                                                 }
                                             }
                                             Err(e) => {
-                                                let err_row = adw::ActionRow::builder().title("Error").subtitle(&e.to_string()).build();
+                                                let err_row = adw::ActionRow::builder()
+                                                    .title("Error")
+                                                    .subtitle(&e.to_string())
+                                                    .build();
                                                 inner_settings.append(&err_row);
                                             }
                                         }
+
                                         inner_stack.set_visible_child_name("zone_details");
                                     });
                                 });
@@ -168,6 +185,22 @@ mod imp {
                             zones_listbox.append(&error_row);
                         }
                     }
+                }
+            ));
+
+            glib::spawn_future_local(glib::clone!(
+                #[strong] services_listbox,
+                #[strong] add_service_button,
+                async move {
+                    reload_services(&services_listbox).await;
+
+                    add_service_button.connect_clicked(glib::clone!(
+                        #[strong] services_listbox,
+                        move |_| {
+                            let list = services_listbox.clone();
+                            show_add_service_dialog(list);
+                        }
+                    ));
                 }
             ));
 
@@ -236,3 +269,205 @@ impl FirewallManagerWindow {
             .build()
     }
 }
+
+
+async fn reload_services(listbox: &gtk::ListBox) {
+    while let Some(child) = listbox.first_child() {
+        listbox.remove(&child);
+    }
+    match crate::firewall_dbus_api::fetch_services().await {
+        Ok(services) => {
+            for svc in services {
+                let row = build_service_row(&svc, listbox);
+                listbox.append(&row);
+            }
+        }
+        Err(e) => {
+            let err_row = adw::ActionRow::builder()
+                .title(&format!("Error: {}", e))
+                .build();
+            listbox.append(&err_row);
+        }
+    }
+}
+
+fn build_service_row(service_name: &str, services_listbox: &gtk::ListBox) -> adw::ActionRow {
+    let row = adw::ActionRow::builder()
+        .title(service_name)
+        .activatable(false)
+        .build();
+
+    let edit_btn = gtk::Button::builder()
+        .icon_name("document-edit-symbolic")
+        .valign(gtk::Align::Center)
+        .tooltip_text("Edit service")
+        .css_classes(vec!["flat".to_string()])
+        .build();
+
+    let svc_name_edit = service_name.to_string();
+    let list_edit = services_listbox.clone();
+    edit_btn.connect_clicked(move |_| {
+        let sn = svc_name_edit.clone();
+        let list = list_edit.clone();
+        glib::spawn_future_local(async move {
+            match crate::firewall_dbus_api::fetch_service_settings(&sn).await {
+                Ok((_ver, _name, desc, ports, _mods, _dests, _includes, _src_ports)) => {
+                    show_edit_service_dialog(sn, desc, ports, list);
+                }
+                Err(e) => eprintln!("Error fetching service settings: {e}"),
+            }
+        });
+    });
+
+    let remove_btn = gtk::Button::builder()
+        .icon_name("user-trash-symbolic")
+        .valign(gtk::Align::Center)
+        .tooltip_text("Remove service")
+        .css_classes(vec!["flat".to_string(), "destructive-action".to_string()])
+        .build();
+
+    let svc_name_rm = service_name.to_string();
+    let list_rm = services_listbox.clone();
+    remove_btn.connect_clicked(move |_| {
+        let sn = svc_name_rm.clone();
+        let list = list_rm.clone();
+
+        let dialog = adw::AlertDialog::builder()
+            .heading("Remove service?")
+            .body(&format!("Are you sure you want to permanently remove \"{}\"?", sn))
+            .build();
+        dialog.add_response("cancel", "Cancel");
+        dialog.add_response("remove", "Remove");
+        dialog.set_response_appearance("remove", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+
+        glib::spawn_future_local(async move {
+            let response = dialog.choose_future(&list).await;
+            if response == "remove" {
+                match crate::firewall_dbus_api::remove_service(&sn).await {
+                    Ok(_) => reload_services(&list).await,
+                    Err(e) => eprintln!("Error removing service: {e}"),
+                }
+            }
+        });
+    });
+
+    row.add_suffix(&edit_btn);
+    row.add_suffix(&remove_btn);
+    row
+}
+
+fn show_add_service_dialog(listbox: gtk::ListBox) {
+    let dialog = adw::AlertDialog::builder()
+        .heading("Add Service")
+        .build();
+
+    dialog.add_response("cancel", "Cancel");
+    dialog.add_response("add", "Add");
+    dialog.set_response_appearance("add", adw::ResponseAppearance::Suggested);
+    dialog.set_default_response(Some("add"));
+    dialog.set_close_response("cancel");
+
+    let content_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .margin_start(8)
+        .margin_end(8)
+        .build();
+
+    let name_entry = adw::EntryRow::builder().title("Service name").build();
+    let desc_entry = adw::EntryRow::builder().title("Description").build();
+    let ports_entry = adw::EntryRow::builder()
+        .title("Ports (e.g. 80/tcp, 443/tcp)")
+        .build();
+
+    content_box.append(&name_entry);
+    content_box.append(&desc_entry);
+    content_box.append(&ports_entry);
+    dialog.set_extra_child(Some(&content_box));
+
+    glib::spawn_future_local(async move {
+        let response = dialog.choose_future(&listbox).await;
+        if response == "add" {
+            let name = name_entry.text().to_string();
+            let desc = desc_entry.text().to_string();
+            let ports = parse_ports(&ports_entry.text());
+            match crate::firewall_dbus_api::add_service(&name, &desc, ports).await {
+                Ok(_) => reload_services(&listbox).await,
+                Err(e) => eprintln!("Error adding service: {e}"),
+            }
+        }
+    });
+}
+
+fn show_edit_service_dialog(
+    service_name: String,
+    current_desc: String,
+    current_ports: Vec<(String, String)>,
+    listbox: gtk::ListBox,
+) {
+    let dialog = adw::AlertDialog::builder()
+        .heading(&format!("Edit \"{}\"", service_name))
+        .build();
+
+    dialog.add_response("cancel", "Cancel");
+    dialog.add_response("save", "Save");
+    dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+    dialog.set_default_response(Some("save"));
+    dialog.set_close_response("cancel");
+
+    let content_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .margin_start(8)
+        .margin_end(8)
+        .build();
+
+    let desc_entry = adw::EntryRow::builder().title("Description").build();
+    desc_entry.set_text(&current_desc);
+
+    let ports_str = current_ports
+        .iter()
+        .map(|(p, pr)| format!("{}/{}", p, pr))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let ports_entry = adw::EntryRow::builder()
+        .title("Ports (e.g. 80/tcp, 443/tcp)")
+        .build();
+    ports_entry.set_text(&ports_str);
+
+    content_box.append(&desc_entry);
+    content_box.append(&ports_entry);
+    dialog.set_extra_child(Some(&content_box));
+
+    glib::spawn_future_local(async move {
+        let response = dialog.choose_future(&listbox).await;
+        if response == "save" {
+            let new_desc = desc_entry.text().to_string();
+            let new_ports = parse_ports(&ports_entry.text());
+            match crate::firewall_dbus_api::edit_service(&service_name, &new_desc, new_ports).await {
+                Ok(_) => reload_services(&listbox).await,
+                Err(e) => eprintln!("Error editing service: {e}"),
+            }
+        }
+    });
+}
+
+fn parse_ports(input: &str) -> Vec<(String, String)> {
+    input
+        .split(',')
+        .filter_map(|s| {
+            let s = s.trim();
+            let mut parts = s.splitn(2, '/');
+            let port = parts.next()?.trim().to_string();
+            let proto = parts.next().unwrap_or("tcp").trim().to_string();
+            if port.is_empty() { None } else { Some((port, proto)) }
+        })
+        .collect()
+}
+

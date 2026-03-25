@@ -43,6 +43,7 @@
                 <property name="hexpand">True</property>
                 <property name="transition-type">crossfade</property>
 
+                <!-- ── Dashboard ──────────────────────────────────────── -->
                 <child>
                   <object class="GtkStackPage">
                     <property name="name">dashboard</property>
@@ -78,6 +79,7 @@
                   </object>
                 </child>
 
+                <!-- ── Zones ──────────────────────────────────────────── -->
                 <child>
                   <object class="GtkStackPage">
                     <property name="name">Zones</property>
@@ -108,9 +110,12 @@
                   </object>
                 </child>
 
+                <!-- ── Zone Details ───────────────────────────────────── -->
                 <child>
                   <object class="GtkStackPage">
                     <property name="name">zone_details</property>
+                    <property name="visible">False</property>
+                    <property name="title" translatable="yes">Zone Details</property>
                     <property name="child">
                       <object class="AdwStatusPage" id="details_page">
                         <property name="icon-name">dialog-information-symbolic</property>
@@ -144,6 +149,71 @@
                   </object>
                 </child>
 
+                <!-- ── Services ───────────────────────────────────────────────────── -->
+<child>
+  <object class="GtkStackPage">
+    <property name="name">Services</property>
+    <property name="title" translatable="yes">Services</property>
+    <property name="child">
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <property name="spacing">12</property>
+        <property name="margin-top">24</property>
+        <property name="margin-bottom">24</property>
+        <property name="margin-start">24</property>
+        <property name="margin-end">24</property>
+        <property name="vexpand">True</property>
+
+        <!-- Header row -->
+        <child>
+          <object class="GtkBox">
+            <property name="orientation">horizontal</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="label" translatable="yes">Services</property>
+                <property name="hexpand">True</property>
+                <property name="xalign">0</property>
+                <style>
+                  <class name="title-1"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton" id="add_service_button">
+                <property name="label" translatable="yes">Add Service</property>
+                <property name="icon-name">list-add-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Add a new service</property>
+                <style>
+                  <class name="suggested-action"/>
+                  <class name="pill"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+
+        <!-- Services list fills remaining space -->
+        <child>
+          <object class="GtkScrolledWindow">
+            <property name="vexpand">True</property>
+            <property name="hscrollbar-policy">never</property>
+            <property name="child">
+              <object class="GtkListBox" id="services_listbox">
+                <property name="selection-mode">none</property>
+                <style>
+                  <class name="boxed-list"/>
+                </style>
+              </object>
+            </property>
+          </object>
+        </child>
+
+      </object>
+    </property>
+  </object>
+</child>
+
+
               </object>
             </child>
           </object>
@@ -169,3 +239,4 @@
     </section>
   </menu>
 </interface>
+
