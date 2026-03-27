@@ -52,6 +52,9 @@ trait FirewalldZone {
 
     #[zbus(name = "changeZoneOfInterface")]
     fn set_zone_interface(&self, zone : &str, interface: &str) -> zbus::Result<String>;
+
+    #[zbus(name = "addService")]
+    fn add_service_zone(&self, zone: &str, service: &str, timeout: i32) -> zbus::Result<String>;
 }
 
 #[proxy(
@@ -169,6 +172,13 @@ pub async fn fetch_zone_of_interface(interface: &str) -> Result<String> {
     let connection = Connection::system().await?;
     let proxy = FirewalldZoneProxy::new(&connection).await?;
     proxy.get_zone_of_interface(interface).await
+}
+
+pub async fn add_service_to_zone(zone: &str, service: &str, timeout: i32) -> Result<String> {
+    let connection = Connection::system().await?;
+    let proxy = FirewalldZoneProxy::new(&connection).await?;
+    let services = proxy.add_service_zone(zone, service, timeout).await?;
+    Ok(services)
 }
 
 

@@ -26,12 +26,10 @@ mod imp {
         pub back_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub details_page: TemplateChild<adw::StatusPage>,
-
         #[template_child]
         pub services_listbox: TemplateChild<gtk::ListBox>,
         #[template_child]
         pub add_service_button: TemplateChild<gtk::Button>,
-
         #[template_child]
         pub interfaces_listbox: TemplateChild<gtk::ListBox>,
     }
@@ -54,167 +52,94 @@ mod imp {
     impl ObjectImpl for FirewallManagerWindow {
         fn constructed(&self) {
             self.parent_constructed();
+            self.setup_firewall_state();
+            self.setup_zones_list();
+            self.setup_services();
+            self.setup_navigation();
+        }
+    }
 
-            let status_page = self.status_page.clone();
+    impl FirewallManagerWindow {
+        fn setup_firewall_state(&self) {
             let state_label = self.state_label.clone();
-            let zones_listbox = self.zones_listbox.clone();
             let load_button = self.load_button.clone();
-            let main_stack = self.main_stack.clone();
-            let settings_listbox = self.settings_listbox.clone();
-            let back_button = self.back_button.clone();
-            let details_page = self.details_page.clone();
-            let services_listbox = self.services_listbox.clone();
-            let add_service_button = self.add_service_button.clone();
+            let status_page = self.status_page.clone();
             let interfaces_listbox = self.interfaces_listbox.clone();
 
-            glib::spawn_future_local(glib::clone!(
-                #[strong] state_label,
-                #[strong] status_page,
-                #[strong] zones_listbox,
+            glib::spawn_future_local(async move {
+                match crate::firewall_dbus_api::fetch_state().await {
+                    Ok(state) => {
+                        state_label.set_label(&format!("Service state: {}", state));
+                        update_firewall_button(&load_button, state.trim().to_lowercase() == "running");
+                    }
+                    Err(_) => {
+                        state_label.set_label("Service state: stopped");
+                        update_firewall_button(&load_button, false);
+                    }
+                }
+
+                match crate::firewall_dbus_api::fetch_default_zone().await {
+                    Ok(zone) => status_page.set_description(Some(&format!("Fallback Zone: {}", zone))),
+                    Err(e) => status_page.set_description(Some(&format!("Error reading zone: {}", e))),
+                }
+
+                reload_interfaces(&interfaces_listbox).await;
+            });
+        }
+
+        fn setup_zones_list(&self) {
+            let zones_listbox = self.zones_listbox.clone();
+            let main_stack = self.main_stack.clone();
+            let settings_listbox = self.settings_listbox.clone();
+            let details_page = self.details_page.clone();
+
+            glib::spawn_future_local(async move {
+                clear_listbox(&zones_listbox);
+
+                match crate::firewall_dbus_api::fetch_zones().await {
+                    Ok(zones) => {
+                        for zone_name in zones {
+                            let row = build_zone_row(
+                                &zone_name,
+                                &main_stack,
+                                &settings_listbox,
+                                &details_page,
+                            );
+                            zones_listbox.append(&row);
+                        }
+                    }
+                    Err(e) => {
+                        let error_row = adw::ActionRow::builder()
+                            .title(&format!("Error fetching zones: {}", e))
+                            .build();
+                        zones_listbox.append(&error_row);
+                    }
+                }
+            });
+        }
+
+        fn setup_services(&self) {
+            let services_listbox = self.services_listbox.clone();
+            let add_service_button = self.add_service_button.clone();
+
+            glib::spawn_future_local(async move {
+                reload_services(&services_listbox).await;
+
+                add_service_button.connect_clicked(glib::clone!(
+                    #[strong] services_listbox,
+                    move |_| show_add_service_dialog(services_listbox.clone())
+                ));
+            });
+        }
+
+        fn setup_navigation(&self) {
+            let main_stack = self.main_stack.clone();
+            let load_button = self.load_button.clone();
+            let state_label = self.state_label.clone();
+
+            self.back_button.connect_clicked(glib::clone!(
                 #[strong] main_stack,
-                #[strong] settings_listbox,
-                #[strong] details_page,
-                #[strong] load_button,
-                #[strong] interfaces_listbox,
-                async move {
-                    match crate::firewall_dbus_api::fetch_state().await {
-                        Ok(state) => {
-                            state_label.set_label(&format!("Service state: {}", state));
-                            if state.trim().to_lowercase() == "running" {
-                                load_button.set_label("Disable Firewall");
-                                load_button.remove_css_class("suggested-action");
-                                load_button.add_css_class("destructive-action");
-                            } else {
-                                load_button.set_label("Enable Firewall");
-                                load_button.remove_css_class("destructive-action");
-                                load_button.add_css_class("suggested-action");
-                            }
-                            load_button.set_sensitive(true);
-                        }
-                        Err(_) => {
-                            state_label.set_label("Service state: stopped");
-                            load_button.set_label("Enable Firewall");
-                            load_button.remove_css_class("destructive-action");
-                            load_button.add_css_class("suggested-action");
-                            load_button.set_sensitive(true);
-                        }
-                    }
-
-                    match crate::firewall_dbus_api::fetch_default_zone().await {
-                        Ok(zone) => {
-                            status_page.set_description(Some(&format!("Fallback Zone: {}", zone)));
-                        }
-                        Err(e) => {
-                            status_page.set_description(Some(&format!("Error reading zone: {}", e)));
-                        }
-                    }
-
-                    reload_interfaces(&interfaces_listbox).await;
-
-                    while let Some(child) = zones_listbox.first_child() {
-                        zones_listbox.remove(&child);
-                    }
-
-                    match crate::firewall_dbus_api::fetch_zones().await {
-                        Ok(zones) => {
-                            for zone_name in zones {
-                                let row = adw::ActionRow::builder()
-                                    .title(&zone_name)
-                                    .activatable(true)
-                                    .build();
-
-                                let arrow = gtk::Image::from_icon_name("go-next-symbolic");
-                                row.add_suffix(&arrow);
-
-                                let current_zone = zone_name.clone();
-                                let stack_ref = main_stack.clone();
-                                let settings_ref = settings_listbox.clone();
-                                let details_ref = details_page.clone();
-
-                                row.connect_activated(move |_| {
-                                    let zone_to_fetch = current_zone.clone();
-                                    let inner_stack = stack_ref.clone();
-                                    let inner_settings = settings_ref.clone();
-                                    let inner_details = details_ref.clone();
-
-                                    glib::spawn_future_local(async move {
-                                        while let Some(child) = inner_settings.first_child() {
-                                            inner_settings.remove(&child);
-                                        }
-
-                                        inner_details.set_title(&format!("Zone: {}", zone_to_fetch));
-
-                                        match crate::firewall_dbus_api::fetch_zone_settings(&zone_to_fetch).await {
-                                            Ok(settings) => {
-                                                for (key, variant) in settings {
-                                                    if let Ok(val) = String::try_from(variant.clone()) {
-                                                        let row = adw::ActionRow::builder()
-                                                            .title(&key)
-                                                            .subtitle(&val)
-                                                            .build();
-                                                        inner_settings.append(&row);
-                                                    } else if let Ok(items) = Vec::<String>::try_from(variant.clone()) {
-                                                        let expander = adw::ExpanderRow::builder()
-                                                            .title(&key)
-                                                            .subtitle(&format!("{} items", items.len()))
-                                                            .build();
-                                                        for item in items {
-                                                            let sub = adw::ActionRow::builder()
-                                                                .title(&item)
-                                                                .build();
-                                                            expander.add_row(&sub);
-                                                        }
-                                                        inner_settings.append(&expander);
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                let err_row = adw::ActionRow::builder()
-                                                    .title("Error")
-                                                    .subtitle(&e.to_string())
-                                                    .build();
-                                                inner_settings.append(&err_row);
-                                            }
-                                        }
-
-                                        inner_stack.set_visible_child_name("zone_details");
-                                    });
-                                });
-
-                                zones_listbox.append(&row);
-                            }
-                        }
-                        Err(e) => {
-                            let error_row = adw::ActionRow::builder()
-                                .title(&format!("Error fetching zones: {}", e))
-                                .build();
-                            zones_listbox.append(&error_row);
-                        }
-                    }
-                }
-            ));
-
-            glib::spawn_future_local(glib::clone!(
-                #[strong] services_listbox,
-                #[strong] add_service_button,
-                async move {
-                    reload_services(&services_listbox).await;
-
-                    add_service_button.connect_clicked(glib::clone!(
-                        #[strong] services_listbox,
-                        move |_| {
-                            let list = services_listbox.clone();
-                            show_add_service_dialog(list);
-                        }
-                    ));
-                }
-            ));
-
-            back_button.connect_clicked(glib::clone!(
-                #[strong] main_stack,
-                move |_| {
-                    main_stack.set_visible_child_name("Zones");
-                }
+                move |_| main_stack.set_visible_child_name("Zones")
             ));
 
             load_button.connect_clicked(glib::clone!(
@@ -222,34 +147,34 @@ mod imp {
                 #[strong] state_label,
                 move |_| {
                     btn.set_sensitive(false);
-                    let btn_async = btn.clone();
-                    let lbl_async = state_label.clone();
-
-                    let is_running = btn_async.label().unwrap_or_default() == "Disable Firewall";
+                    let btn = btn.clone();
+                    let lbl = state_label.clone();
+                    let is_running = btn.label().unwrap_or_default() == "Disable Firewall";
 
                     glib::spawn_future_local(async move {
                         if is_running {
                             match crate::firewall_dbus_api::disable_firewall().await {
                                 Ok(_) => {
-                                    lbl_async.set_label("Service state: stopped");
-                                    btn_async.set_label("Enable Firewall");
-                                    btn_async.remove_css_class("destructive-action");
-                                    btn_async.add_css_class("suggested-action");
+                                    lbl.set_label("Service state: stopped");
+                                    update_firewall_button(&btn, false);
                                 }
-                                Err(e) => lbl_async.set_label(&format!("Error: {}", e)),
+                                Err(e) => {
+                                    lbl.set_label(&format!("Error: {}", e));
+                                    btn.set_sensitive(true);
+                                }
                             }
                         } else {
                             match crate::firewall_dbus_api::enable_firewall().await {
                                 Ok(_) => {
-                                    lbl_async.set_label("Service state: running");
-                                    btn_async.set_label("Disable Firewall");
-                                    btn_async.remove_css_class("suggested-action");
-                                    btn_async.add_css_class("destructive-action");
+                                    lbl.set_label("Service state: running");
+                                    update_firewall_button(&btn, true);
                                 }
-                                Err(e) => lbl_async.set_label(&format!("Error: {}", e)),
+                                Err(e) => {
+                                    lbl.set_label(&format!("Error: {}", e));
+                                    btn.set_sensitive(true);
+                                }
                             }
                         }
-                        btn_async.set_sensitive(true);
                     });
                 }
             ));
@@ -276,11 +201,103 @@ impl FirewallManagerWindow {
     }
 }
 
-
-async fn reload_services(listbox: &gtk::ListBox) {
+fn clear_listbox(listbox: &gtk::ListBox) {
     while let Some(child) = listbox.first_child() {
         listbox.remove(&child);
     }
+}
+
+fn update_firewall_button(button: &gtk::Button, is_running: bool) {
+    button.set_sensitive(true);
+    if is_running {
+        button.set_label("Disable Firewall");
+        button.remove_css_class("suggested-action");
+        button.add_css_class("destructive-action");
+    } else {
+        button.set_label("Enable Firewall");
+        button.remove_css_class("destructive-action");
+        button.add_css_class("suggested-action");
+    }
+}
+
+fn build_zone_row(
+    zone_name: &str,
+    main_stack: &gtk::Stack,
+    settings_listbox: &gtk::ListBox,
+    details_page: &adw::StatusPage,
+) -> adw::ActionRow {
+    let row = adw::ActionRow::builder()
+        .title(zone_name)
+        .activatable(true)
+        .build();
+
+    let arrow = gtk::Image::from_icon_name("go-next-symbolic");
+    row.add_suffix(&arrow);
+
+    let zone_name = zone_name.to_string();
+    let stack = main_stack.clone();
+    let settings = settings_listbox.clone();
+    let details = details_page.clone();
+
+    row.connect_activated(move |_| {
+        let zone = zone_name.clone();
+        let stack = stack.clone();
+        let settings = settings.clone();
+        let details = details.clone();
+
+        glib::spawn_future_local(async move {
+            load_zone_details(&zone, &stack, &settings, &details).await;
+        });
+    });
+
+    row
+}
+
+async fn load_zone_details(
+    zone_name: &str,
+    stack: &gtk::Stack,
+    settings_listbox: &gtk::ListBox,
+    details_page: &adw::StatusPage,
+) {
+    clear_listbox(settings_listbox);
+    details_page.set_title(&format!("Zone: {}", zone_name));
+
+    match crate::firewall_dbus_api::fetch_zone_settings(zone_name).await {
+        Ok(settings) => {
+            for (key, variant) in settings {
+                if let Ok(val) = String::try_from(variant.clone()) {
+                    let row = adw::ActionRow::builder()
+                        .title(&key)
+                        .subtitle(&val)
+                        .build();
+                    settings_listbox.append(&row);
+                } else if let Ok(items) = Vec::<String>::try_from(variant) {
+                    let expander = adw::ExpanderRow::builder()
+                        .title(&key)
+                        .subtitle(&format!("{} items", items.len()))
+                        .build();
+                    for item in items {
+                        let sub = adw::ActionRow::builder().title(&item).build();
+                        expander.add_row(&sub);
+                    }
+                    settings_listbox.append(&expander);
+                }
+            }
+        }
+        Err(e) => {
+            let err_row = adw::ActionRow::builder()
+                .title("Error")
+                .subtitle(&e.to_string())
+                .build();
+            settings_listbox.append(&err_row);
+        }
+    }
+
+    stack.set_visible_child_name("zone_details");
+}
+
+async fn reload_services(listbox: &gtk::ListBox) {
+    clear_listbox(listbox);
     match crate::firewall_dbus_api::fetch_services().await {
         Ok(services) => {
             for svc in services {
@@ -478,9 +495,7 @@ fn parse_ports(input: &str) -> Vec<(String, String)> {
 }
 
 async fn reload_interfaces(listbox: &gtk::ListBox) {
-    while let Some(child) = listbox.first_child() {
-        listbox.remove(&child);
-    }
+    clear_listbox(listbox);
 
     match crate::firewall_dbus_api::fetch_interfaces().await {
         Ok(interfaces) => {
@@ -495,7 +510,7 @@ async fn reload_interfaces(listbox: &gtk::ListBox) {
             for iface in interfaces {
                 let current_zone = crate::firewall_dbus_api::fetch_zone_of_interface(&iface)
                     .await
-                    .unwrap_or_else(|_| "Unknown".to_string());
+                    .unwrap_or_else(|e| { eprintln!("Error fetching zone for {iface}: {e}"); "Unknown".to_string() });
 
                 let row = adw::ActionRow::builder()
                     .title(&iface)
@@ -542,7 +557,7 @@ fn show_change_zone_dialog(interface: String, current_zone: String, listbox: gtk
         let combo = gtk::DropDown::from_strings(&zone_strs);
 
         if let Some(pos) = zones.iter().position(|z| z == &current_zone) {
-            combo.set_selected(pos as u32);
+            combo.set_selected(u32::try_from(pos).unwrap_or(0));
         }
 
         let content_box = gtk::Box::builder()
@@ -568,8 +583,8 @@ fn show_change_zone_dialog(interface: String, current_zone: String, listbox: gtk
 
         let response = dialog.choose_future(&listbox).await;
         if response == "save" {
-            let selected_idx = combo.selected();
-            if let Some(new_zone) = zones.get(selected_idx as usize) {
+            let selected_idx = combo.selected() as usize;
+            if let Some(new_zone) = zones.get(selected_idx) {
                 match crate::firewall_dbus_api::change_zone_interface(new_zone, &interface).await {
                     Ok(_) => reload_interfaces(&listbox).await,
                     Err(e) => eprintln!("Error changing zone: {}", e),
