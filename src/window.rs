@@ -12,6 +12,8 @@ mod imp {
     #[template(resource = "/com/github/rodrigofilipefaria/FirewallManager/window.ui")]
     pub struct FirewallManagerWindow {
         #[template_child]
+        pub toast_overlay: TemplateChild<adw::ToastOverlay>,
+        #[template_child]
         pub status_page: TemplateChild<adw::StatusPage>,
         #[template_child]
         pub load_button: TemplateChild<gtk::Button>,
@@ -60,10 +62,12 @@ mod imp {
                 match FirewallClient::new().await {
                     Ok(client) => {
                         let imp = obj.imp();
-                        imp.setup_firewall_state(&client);
-                        imp.setup_zones_list(&client);
-                        imp.setup_services(&client);
-                        imp.setup_navigation(&client);
+                        let toast_overlay = imp.toast_overlay.get();
+
+                        imp.setup_firewall_state(&client, &toast_overlay);
+                        imp.setup_zones_list(&client, &toast_overlay);
+                        imp.setup_services(&client, &toast_overlay);
+                        imp.setup_navigation(&client, &toast_overlay);
                     }
                     Err(e) => {
                         eprintln!("Failed to connect to D-Bus: {}", e);
@@ -74,12 +78,13 @@ mod imp {
     }
 
     impl FirewallManagerWindow {
-        fn setup_firewall_state(&self, client: &FirewallClient) {
+        fn setup_firewall_state(&self, client: &FirewallClient, toast_overlay: &adw::ToastOverlay) {
             let state_label = self.state_label.clone();
             let load_button = self.load_button.clone();
             let status_page = self.status_page.clone();
             let interfaces_listbox = self.interfaces_listbox.clone();
             let client = client.clone();
+            let overlay = toast_overlay.clone();
 
             glib::spawn_future_local(async move {
                 match client.fetch_state().await {
@@ -98,16 +103,17 @@ mod imp {
                     Err(e) => status_page.set_description(Some(&format!("Error reading zone: {}", e))),
                 }
 
-                reload_interfaces(&client, &interfaces_listbox).await;
+                reload_interfaces(&client, &interfaces_listbox, &overlay).await;
             });
         }
 
-        fn setup_zones_list(&self, client: &FirewallClient) {
+        fn setup_zones_list(&self, client: &FirewallClient, toast_overlay: &adw::ToastOverlay) {
             let zones_listbox = self.zones_listbox.clone();
             let main_stack = self.main_stack.clone();
             let settings_listbox = self.settings_listbox.clone();
             let details_page = self.details_page.clone();
             let client = client.clone();
+            let overlay = toast_overlay.clone();
 
             glib::spawn_future_local(async move {
                 clear_listbox(&zones_listbox);
@@ -121,6 +127,7 @@ mod imp {
                                 &main_stack,
                                 &settings_listbox,
                                 &details_page,
+                                &overlay,
                             );
                             zones_listbox.append(&row);
                         }
@@ -135,28 +142,31 @@ mod imp {
             });
         }
 
-        fn setup_services(&self, client: &FirewallClient) {
+        fn setup_services(&self, client: &FirewallClient, toast_overlay: &adw::ToastOverlay) {
             let services_listbox = self.services_listbox.clone();
             let add_service_button = self.add_service_button.clone();
 
             let client_for_reload = client.clone();
             let client_for_dialog = client.clone();
+            let overlay = toast_overlay.clone();
+            let overlay_dialog = toast_overlay.clone();
 
             glib::spawn_future_local(async move {
-                reload_services(&client_for_reload, &services_listbox).await;
+                reload_services(&client_for_reload, &services_listbox, &overlay).await;
 
                 add_service_button.connect_clicked(glib::clone!(
                     #[strong] services_listbox,
-                    move |_| show_add_service_dialog(client_for_dialog.clone(), services_listbox.clone())
+                    move |_| show_add_service_dialog(client_for_dialog.clone(), services_listbox.clone(), overlay_dialog.clone())
                 ));
             });
         }
 
-        fn setup_navigation(&self, client: &FirewallClient) {
+        fn setup_navigation(&self, client: &FirewallClient, toast_overlay: &adw::ToastOverlay) {
             let main_stack = self.main_stack.clone();
             let load_button = self.load_button.clone();
             let state_label = self.state_label.clone();
             let client = client.clone();
+            let overlay = toast_overlay.clone();
 
             self.back_button.connect_clicked(glib::clone!(
                 #[strong] main_stack,
@@ -172,6 +182,7 @@ mod imp {
                     let lbl = state_label.clone();
                     let is_running = btn.label().unwrap_or_default() == "Disable Firewall";
                     let client = client.clone();
+                    let overlay = overlay.clone();
 
                     glib::spawn_future_local(async move {
                         if is_running {
@@ -181,7 +192,7 @@ mod imp {
                                     update_firewall_button(&btn, false);
                                 }
                                 Err(e) => {
-                                    lbl.set_label(&format!("Error: {}", e));
+                                    show_toast(&overlay, &format!("Failed to stop firewall: {}", e));
                                     btn.set_sensitive(true);
                                 }
                             }
@@ -192,7 +203,7 @@ mod imp {
                                     update_firewall_button(&btn, true);
                                 }
                                 Err(e) => {
-                                    lbl.set_label(&format!("Error: {}", e));
+                                    show_toast(&overlay, &format!("Failed to start firewall: {}", e));
                                     btn.set_sensitive(true);
                                 }
                             }
@@ -223,6 +234,14 @@ impl FirewallManagerWindow {
     }
 }
 
+fn show_toast(overlay: &adw::ToastOverlay, message: &str) {
+    let toast = adw::Toast::builder()
+        .title(message)
+        .timeout(3)
+        .build();
+    overlay.add_toast(toast);
+}
+
 fn clear_listbox(listbox: &gtk::ListBox) {
     while let Some(child) = listbox.first_child() {
         listbox.remove(&child);
@@ -248,6 +267,7 @@ fn build_zone_row(
     main_stack: &gtk::Stack,
     settings_listbox: &gtk::ListBox,
     details_page: &adw::StatusPage,
+    toast_overlay: &adw::ToastOverlay,
 ) -> adw::ActionRow {
     let row = adw::ActionRow::builder()
         .title(zone_name)
@@ -262,6 +282,7 @@ fn build_zone_row(
     let settings = settings_listbox.clone();
     let details = details_page.clone();
     let client = client.clone();
+    let overlay = toast_overlay.clone();
 
     row.connect_activated(move |_| {
         let zone = zone_name.clone();
@@ -269,9 +290,10 @@ fn build_zone_row(
         let settings = settings.clone();
         let details = details.clone();
         let client_clone = client.clone();
+        let overlay_clone = overlay.clone();
 
         glib::spawn_future_local(async move {
-            load_zone_details(&client_clone, &zone, &stack, &settings, &details).await;
+            load_zone_details(&client_clone, &zone, &stack, &settings, &details, &overlay_clone).await;
         });
     });
 
@@ -284,6 +306,7 @@ async fn load_zone_details(
     stack: &gtk::Stack,
     settings_listbox: &gtk::ListBox,
     details_page: &adw::StatusPage,
+    toast_overlay: &adw::ToastOverlay,
 ) {
     clear_listbox(settings_listbox);
     details_page.set_title(&format!("Zone: {}", zone_name));
@@ -320,6 +343,7 @@ async fn load_zone_details(
                             let stack_clone = stack.clone();
                             let details_clone = details_page.clone();
                             let client_rm = client.clone();
+                            let overlay_rm = toast_overlay.clone();
 
                             remove_btn.connect_clicked(move |_| {
                                 let z = z_name.clone();
@@ -328,13 +352,14 @@ async fn load_zone_details(
                                 let stack = stack_clone.clone();
                                 let details = details_clone.clone();
                                 let c = client_rm.clone();
+                                let overlay = overlay_rm.clone();
 
                                 glib::spawn_future_local(async move {
                                     match c.remove_service_to_zone(&z, &s).await {
                                         Ok(_) => {
-                                            load_zone_details(&c, &z, &stack, &listbox, &details).await;
+                                            load_zone_details(&c, &z, &stack, &listbox, &details, &overlay).await;
                                         }
-                                        Err(e) => eprintln!("Error removing service from zone: {}", e),
+                                        Err(e) => show_toast(&overlay, &format!("Error removing service from zone: {}", e)),
                                     }
                                 });
                             });
@@ -359,6 +384,7 @@ async fn load_zone_details(
                         let stack_clone = stack.clone();
                         let details_clone = details_page.clone();
                         let client_add = client.clone();
+                        let overlay_add = toast_overlay.clone();
 
                         add_service_row.connect_activated(move |_| {
                             show_add_service_to_zone_dialog(
@@ -367,6 +393,7 @@ async fn load_zone_details(
                                 listbox_clone.clone(),
                                 stack_clone.clone(),
                                 details_clone.clone(),
+                                overlay_add.clone(),
                             );
                         });
 
@@ -378,11 +405,7 @@ async fn load_zone_details(
             }
         }
         Err(e) => {
-            let err_row = adw::ActionRow::builder()
-                .title("Error")
-                .subtitle(&e.to_string())
-                .build();
-            settings_listbox.append(&err_row);
+            show_toast(toast_overlay, &format!("Error fetching details: {}", e));
         }
     }
 
@@ -395,6 +418,7 @@ fn show_add_service_to_zone_dialog(
     listbox: gtk::ListBox,
     stack: gtk::Stack,
     details_page: adw::StatusPage,
+    toast_overlay: adw::ToastOverlay,
 ) {
     glib::spawn_future_local(async move {
         let services = client.fetch_services().await.unwrap_or_default();
@@ -443,34 +467,36 @@ fn show_add_service_to_zone_dialog(
             if let Some(new_svc) = services.get(selected_idx) {
                 match client.add_service_to_zone(&zone, new_svc, timeout).await {
                     Ok(_) => {
-                        load_zone_details(&client, &zone, &stack, &listbox, &details_page).await;
+                        load_zone_details(&client, &zone, &stack, &listbox, &details_page, &toast_overlay).await;
                     }
-                    Err(e) => eprintln!("Error adding service to zone: {}", e),
+                    Err(e) => show_toast(&toast_overlay, &format!("Failed to add service: {}", e)),
                 }
             }
         }
     });
 }
 
-async fn reload_services(client: &FirewallClient, listbox: &gtk::ListBox) {
+async fn reload_services(client: &FirewallClient, listbox: &gtk::ListBox, toast_overlay: &adw::ToastOverlay) {
     clear_listbox(listbox);
     match client.fetch_services().await {
         Ok(services) => {
             for svc in services {
-                let row = build_service_row(client, &svc, listbox);
+                let row = build_service_row(client, &svc, listbox, toast_overlay);
                 listbox.append(&row);
             }
         }
         Err(e) => {
-            let err_row = adw::ActionRow::builder()
-                .title(&format!("Error: {}", e))
-                .build();
-            listbox.append(&err_row);
+            show_toast(toast_overlay, &format!("Error loading services: {}", e));
         }
     }
 }
 
-fn build_service_row(client: &FirewallClient, service_name: &str, services_listbox: &gtk::ListBox) -> adw::ActionRow {
+fn build_service_row(
+    client: &FirewallClient,
+    service_name: &str,
+    services_listbox: &gtk::ListBox,
+    toast_overlay: &adw::ToastOverlay,
+) -> adw::ActionRow {
     let row = adw::ActionRow::builder()
         .title(service_name)
         .activatable(false)
@@ -486,18 +512,20 @@ fn build_service_row(client: &FirewallClient, service_name: &str, services_listb
     let svc_name_edit = service_name.to_string();
     let list_edit = services_listbox.clone();
     let client_edit = client.clone();
+    let overlay_edit = toast_overlay.clone();
 
     edit_btn.connect_clicked(move |_| {
         let sn = svc_name_edit.clone();
         let list = list_edit.clone();
         let c = client_edit.clone();
+        let overlay = overlay_edit.clone();
 
         glib::spawn_future_local(async move {
             match c.fetch_service_settings(&sn).await {
                 Ok((_ver, _name, desc, ports, _mods, _dests, _includes, _src_ports)) => {
-                    show_edit_service_dialog(c.clone(), sn, desc, ports, list);
+                    show_edit_service_dialog(c.clone(), sn, desc, ports, list, overlay);
                 }
-                Err(e) => eprintln!("Error fetching service settings: {e}"),
+                Err(e) => show_toast(&overlay, &format!("Error fetching service settings: {e}")),
             }
         });
     });
@@ -512,11 +540,13 @@ fn build_service_row(client: &FirewallClient, service_name: &str, services_listb
     let svc_name_rm = service_name.to_string();
     let list_rm = services_listbox.clone();
     let client_rm = client.clone();
+    let overlay_rm = toast_overlay.clone();
 
     remove_btn.connect_clicked(move |_| {
         let sn = svc_name_rm.clone();
         let list = list_rm.clone();
         let c = client_rm.clone();
+        let overlay = overlay_rm.clone();
 
         let dialog = adw::AlertDialog::builder()
             .heading("Remove service?")
@@ -532,8 +562,8 @@ fn build_service_row(client: &FirewallClient, service_name: &str, services_listb
             let response = dialog.choose_future(&list).await;
             if response == "remove" {
                 match c.remove_service(&sn).await {
-                    Ok(_) => reload_services(&c, &list).await,
-                    Err(e) => eprintln!("Error removing service: {e}"),
+                    Ok(_) => reload_services(&c, &list, &overlay).await,
+                    Err(e) => show_toast(&overlay, &format!("Failed to remove service: {e}")),
                 }
             }
         });
@@ -544,7 +574,7 @@ fn build_service_row(client: &FirewallClient, service_name: &str, services_listb
     row
 }
 
-fn show_add_service_dialog(client: FirewallClient, listbox: gtk::ListBox) {
+fn show_add_service_dialog(client: FirewallClient, listbox: gtk::ListBox, toast_overlay: adw::ToastOverlay) {
     let dialog = adw::AlertDialog::builder()
         .heading("Add Service")
         .build();
@@ -582,8 +612,8 @@ fn show_add_service_dialog(client: FirewallClient, listbox: gtk::ListBox) {
             let desc = desc_entry.text().to_string();
             let ports = parse_ports(&ports_entry.text());
             match client.add_service(&name, &desc, ports).await {
-                Ok(_) => reload_services(&client, &listbox).await,
-                Err(e) => eprintln!("Error adding service: {e}"),
+                Ok(_) => reload_services(&client, &listbox, &toast_overlay).await,
+                Err(e) => show_toast(&toast_overlay, &format!("Failed to add service: {e}")),
             }
         }
     });
@@ -595,6 +625,7 @@ fn show_edit_service_dialog(
     current_desc: String,
     current_ports: Vec<(String, String)>,
     listbox: gtk::ListBox,
+    toast_overlay: adw::ToastOverlay,
 ) {
     let dialog = adw::AlertDialog::builder()
         .heading(&format!("Edit \"{}\"", service_name))
@@ -638,8 +669,8 @@ fn show_edit_service_dialog(
             let new_desc = desc_entry.text().to_string();
             let new_ports = parse_ports(&ports_entry.text());
             match client.edit_service(&service_name, &new_desc, new_ports).await {
-                Ok(_) => reload_services(&client, &listbox).await,
-                Err(e) => eprintln!("Error editing service: {e}"),
+                Ok(_) => reload_services(&client, &listbox, &toast_overlay).await,
+                Err(e) => show_toast(&toast_overlay, &format!("Failed to edit service: {e}")),
             }
         }
     });
@@ -658,7 +689,7 @@ fn parse_ports(input: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-async fn reload_interfaces(client: &FirewallClient, listbox: &gtk::ListBox) {
+async fn reload_interfaces(client: &FirewallClient, listbox: &gtk::ListBox, toast_overlay: &adw::ToastOverlay) {
     clear_listbox(listbox);
 
     match client.fetch_interfaces().await {
@@ -674,7 +705,10 @@ async fn reload_interfaces(client: &FirewallClient, listbox: &gtk::ListBox) {
             for iface in interfaces {
                 let current_zone = client.fetch_zone_of_interface(&iface)
                     .await
-                    .unwrap_or_else(|e| { eprintln!("Error fetching zone for {iface}: {e}"); "Unknown".to_string() });
+                    .unwrap_or_else(|e| {
+                        show_toast(toast_overlay, &format!("Error fetching zone for {iface}: {e}"));
+                        "Unknown".to_string()
+                    });
 
                 let row = adw::ActionRow::builder()
                     .title(&iface)
@@ -692,9 +726,10 @@ async fn reload_interfaces(client: &FirewallClient, listbox: &gtk::ListBox) {
                 let iface_clone = iface.clone();
                 let zone_clone = current_zone.clone();
                 let client_clone = client.clone();
+                let overlay_clone = toast_overlay.clone();
 
                 change_btn.connect_clicked(move |_| {
-                    show_change_zone_dialog(client_clone.clone(), iface_clone.clone(), zone_clone.clone(), list_clone.clone());
+                    show_change_zone_dialog(client_clone.clone(), iface_clone.clone(), zone_clone.clone(), list_clone.clone(), overlay_clone.clone());
                 });
 
                 row.add_suffix(&change_btn);
@@ -702,15 +737,12 @@ async fn reload_interfaces(client: &FirewallClient, listbox: &gtk::ListBox) {
             }
         }
         Err(e) => {
-            let err_row = adw::ActionRow::builder()
-                .title(&format!("Error fetching interfaces: {}", e))
-                .build();
-            listbox.append(&err_row);
+            show_toast(toast_overlay, &format!("Error fetching interfaces: {}", e));
         }
     }
 }
 
-fn show_change_zone_dialog(client: FirewallClient, interface: String, current_zone: String, listbox: gtk::ListBox) {
+fn show_change_zone_dialog(client: FirewallClient, interface: String, current_zone: String, listbox: gtk::ListBox, toast_overlay: adw::ToastOverlay) {
     glib::spawn_future_local(async move {
         let zones = client.fetch_zones().await.unwrap_or_default();
 
@@ -751,8 +783,8 @@ fn show_change_zone_dialog(client: FirewallClient, interface: String, current_zo
             let selected_idx = combo.selected() as usize;
             if let Some(new_zone) = zones.get(selected_idx) {
                 match client.change_zone_interface(new_zone, &interface).await {
-                    Ok(_) => reload_interfaces(&client, &listbox).await,
-                    Err(e) => eprintln!("Error changing zone: {}", e),
+                    Ok(_) => reload_interfaces(&client, &listbox, &toast_overlay).await,
+                    Err(e) => show_toast(&toast_overlay, &format!("Failed to change zone: {}", e)),
                 }
             }
         }
