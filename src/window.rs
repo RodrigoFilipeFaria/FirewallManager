@@ -276,10 +276,73 @@ async fn load_zone_details(
                         .title(&key)
                         .subtitle(&format!("{} items", items.len()))
                         .build();
+
                     for item in items {
-                        let sub = adw::ActionRow::builder().title(&item).build();
+                        let sub = adw::ActionRow::builder().title(&item).activatable(false).build();
+
+                        if key == "services" {
+                            let remove_btn = gtk::Button::builder()
+                                .icon_name("user-trash-symbolic")
+                                .valign(gtk::Align::Center)
+                                .tooltip_text("Remove service from zone")
+                                .css_classes(vec!["flat".to_string(), "destructive-action".to_string()])
+                                .build();
+
+                            let z_name = zone_name.to_string();
+                            let s_name = item.clone();
+                            let listbox_clone = settings_listbox.clone();
+                            let stack_clone = stack.clone();
+                            let details_clone = details_page.clone();
+
+                            remove_btn.connect_clicked(move |_| {
+                                let z = z_name.clone();
+                                let s = s_name.clone();
+                                let listbox = listbox_clone.clone();
+                                let stack = stack_clone.clone();
+                                let details = details_clone.clone();
+
+                                glib::spawn_future_local(async move {
+                                    match crate::firewall_dbus_api::remove_service_to_zone(&z, &s).await {
+                                        Ok(_) => {
+                                            load_zone_details(&z, &stack, &listbox, &details).await;
+                                        }
+                                        Err(e) => eprintln!("Error removing service from zone: {}", e),
+                                    }
+                                });
+                            });
+
+                            sub.add_suffix(&remove_btn);
+                        }
+
                         expander.add_row(&sub);
                     }
+
+                    if key == "services" {
+                        let add_service_row = adw::ActionRow::builder()
+                            .title("Add Service")
+                            .activatable(true)
+                            .build();
+
+                        let add_icon = gtk::Image::from_icon_name("list-add-symbolic");
+                        add_service_row.add_prefix(&add_icon);
+
+                        let z_name_clone = zone_name.to_string();
+                        let listbox_clone = settings_listbox.clone();
+                        let stack_clone = stack.clone();
+                        let details_clone = details_page.clone();
+
+                        add_service_row.connect_activated(move |_| {
+                            show_add_service_to_zone_dialog(
+                                z_name_clone.clone(),
+                                listbox_clone.clone(),
+                                stack_clone.clone(),
+                                details_clone.clone(),
+                            );
+                        });
+
+                        expander.add_row(&add_service_row);
+                    }
+
                     settings_listbox.append(&expander);
                 }
             }
@@ -294,6 +357,68 @@ async fn load_zone_details(
     }
 
     stack.set_visible_child_name("zone_details");
+}
+
+fn show_add_service_to_zone_dialog(
+    zone: String,
+    listbox: gtk::ListBox,
+    stack: gtk::Stack,
+    details_page: adw::StatusPage,
+) {
+    glib::spawn_future_local(async move {
+        let services = crate::firewall_dbus_api::fetch_services().await.unwrap_or_default();
+
+        let dialog = adw::AlertDialog::builder()
+            .heading(&format!("Add Service to {}", zone))
+            .build();
+
+        let svc_strs: Vec<&str> = services.iter().map(|s| s.as_str()).collect();
+        let combo = gtk::DropDown::from_strings(&svc_strs);
+
+        let timeout_entry = adw::EntryRow::builder()
+            .title("Timeout (seconds, 0 for permanent)")
+            .text("0")
+            .build();
+
+        let content_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .margin_top(8)
+            .margin_bottom(8)
+            .margin_start(8)
+            .margin_end(8)
+            .build();
+
+        let label = gtk::Label::builder()
+            .label("Select a service:")
+            .halign(gtk::Align::Start)
+            .margin_bottom(8)
+            .build();
+
+        content_box.append(&label);
+        content_box.append(&combo);
+        content_box.append(&timeout_entry);
+        dialog.set_extra_child(Some(&content_box));
+
+        dialog.add_response("cancel", "Cancel");
+        dialog.add_response("add", "Add");
+        dialog.set_response_appearance("add", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("add"));
+        dialog.set_close_response("cancel");
+
+        let response = dialog.choose_future(&listbox).await;
+        if response == "add" {
+            let selected_idx = combo.selected() as usize;
+            let timeout = timeout_entry.text().parse::<i32>().unwrap_or(0);
+            if let Some(new_svc) = services.get(selected_idx) {
+                match crate::firewall_dbus_api::add_service_to_zone(&zone, new_svc, timeout).await {
+                    Ok(_) => {
+                        load_zone_details(&zone, &stack, &listbox, &details_page).await;
+                    }
+                    Err(e) => eprintln!("Error adding service to zone: {}", e),
+                }
+            }
+        }
+    });
 }
 
 async fn reload_services(listbox: &gtk::ListBox) {

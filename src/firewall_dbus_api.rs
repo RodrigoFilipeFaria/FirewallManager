@@ -55,6 +55,9 @@ trait FirewalldZone {
 
     #[zbus(name = "addService")]
     fn add_service_zone(&self, zone: &str, service: &str, timeout: i32) -> zbus::Result<String>;
+
+    #[zbus(name = "removeService")]
+    fn remove_service_zone(&self, zone: &str, service: &str) -> zbus::Result<String>;
 }
 
 #[proxy(
@@ -181,6 +184,12 @@ pub async fn add_service_to_zone(zone: &str, service: &str, timeout: i32) -> Res
     Ok(services)
 }
 
+pub async fn remove_service_to_zone(zone: &str, service: &str) -> Result<String> {
+    let connection = Connection::system().await?;
+    let proxy = FirewalldZoneProxy::new(&connection).await?;
+    let services = proxy.remove_service_zone(zone, service).await?;
+    Ok(services)
+}
 
 pub async fn fetch_services() -> Result<Vec<String>> {
     let connection = Connection::system().await?;
