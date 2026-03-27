@@ -3,6 +3,7 @@ use adw::prelude::*;
 use std::convert::TryFrom;
 use adw::subclass::prelude::*;
 use gtk::{gio, glib};
+use crate::firewall_dbus_api::FirewallClient;
 
 mod imp {
     use super::*;
@@ -52,22 +53,36 @@ mod imp {
     impl ObjectImpl for FirewallManagerWindow {
         fn constructed(&self) {
             self.parent_constructed();
-            self.setup_firewall_state();
-            self.setup_zones_list();
-            self.setup_services();
-            self.setup_navigation();
+
+            let obj = self.obj().clone();
+
+            glib::spawn_future_local(async move {
+                match FirewallClient::new().await {
+                    Ok(client) => {
+                        let imp = obj.imp();
+                        imp.setup_firewall_state(&client);
+                        imp.setup_zones_list(&client);
+                        imp.setup_services(&client);
+                        imp.setup_navigation(&client);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to connect to D-Bus: {}", e);
+                    }
+                }
+            });
         }
     }
 
     impl FirewallManagerWindow {
-        fn setup_firewall_state(&self) {
+        fn setup_firewall_state(&self, client: &FirewallClient) {
             let state_label = self.state_label.clone();
             let load_button = self.load_button.clone();
             let status_page = self.status_page.clone();
             let interfaces_listbox = self.interfaces_listbox.clone();
+            let client = client.clone();
 
             glib::spawn_future_local(async move {
-                match crate::firewall_dbus_api::fetch_state().await {
+                match client.fetch_state().await {
                     Ok(state) => {
                         state_label.set_label(&format!("Service state: {}", state));
                         update_firewall_button(&load_button, state.trim().to_lowercase() == "running");
@@ -78,28 +93,30 @@ mod imp {
                     }
                 }
 
-                match crate::firewall_dbus_api::fetch_default_zone().await {
+                match client.fetch_default_zone().await {
                     Ok(zone) => status_page.set_description(Some(&format!("Fallback Zone: {}", zone))),
                     Err(e) => status_page.set_description(Some(&format!("Error reading zone: {}", e))),
                 }
 
-                reload_interfaces(&interfaces_listbox).await;
+                reload_interfaces(&client, &interfaces_listbox).await;
             });
         }
 
-        fn setup_zones_list(&self) {
+        fn setup_zones_list(&self, client: &FirewallClient) {
             let zones_listbox = self.zones_listbox.clone();
             let main_stack = self.main_stack.clone();
             let settings_listbox = self.settings_listbox.clone();
             let details_page = self.details_page.clone();
+            let client = client.clone();
 
             glib::spawn_future_local(async move {
                 clear_listbox(&zones_listbox);
 
-                match crate::firewall_dbus_api::fetch_zones().await {
+                match client.fetch_zones().await {
                     Ok(zones) => {
                         for zone_name in zones {
                             let row = build_zone_row(
+                                &client,
                                 &zone_name,
                                 &main_stack,
                                 &settings_listbox,
@@ -118,24 +135,28 @@ mod imp {
             });
         }
 
-        fn setup_services(&self) {
+        fn setup_services(&self, client: &FirewallClient) {
             let services_listbox = self.services_listbox.clone();
             let add_service_button = self.add_service_button.clone();
 
+            let client_for_reload = client.clone();
+            let client_for_dialog = client.clone();
+
             glib::spawn_future_local(async move {
-                reload_services(&services_listbox).await;
+                reload_services(&client_for_reload, &services_listbox).await;
 
                 add_service_button.connect_clicked(glib::clone!(
                     #[strong] services_listbox,
-                    move |_| show_add_service_dialog(services_listbox.clone())
+                    move |_| show_add_service_dialog(client_for_dialog.clone(), services_listbox.clone())
                 ));
             });
         }
 
-        fn setup_navigation(&self) {
+        fn setup_navigation(&self, client: &FirewallClient) {
             let main_stack = self.main_stack.clone();
             let load_button = self.load_button.clone();
             let state_label = self.state_label.clone();
+            let client = client.clone();
 
             self.back_button.connect_clicked(glib::clone!(
                 #[strong] main_stack,
@@ -150,10 +171,11 @@ mod imp {
                     let btn = btn.clone();
                     let lbl = state_label.clone();
                     let is_running = btn.label().unwrap_or_default() == "Disable Firewall";
+                    let client = client.clone();
 
                     glib::spawn_future_local(async move {
                         if is_running {
-                            match crate::firewall_dbus_api::disable_firewall().await {
+                            match client.disable_firewall().await {
                                 Ok(_) => {
                                     lbl.set_label("Service state: stopped");
                                     update_firewall_button(&btn, false);
@@ -164,7 +186,7 @@ mod imp {
                                 }
                             }
                         } else {
-                            match crate::firewall_dbus_api::enable_firewall().await {
+                            match client.enable_firewall().await {
                                 Ok(_) => {
                                     lbl.set_label("Service state: running");
                                     update_firewall_button(&btn, true);
@@ -221,6 +243,7 @@ fn update_firewall_button(button: &gtk::Button, is_running: bool) {
 }
 
 fn build_zone_row(
+    client: &FirewallClient,
     zone_name: &str,
     main_stack: &gtk::Stack,
     settings_listbox: &gtk::ListBox,
@@ -238,15 +261,17 @@ fn build_zone_row(
     let stack = main_stack.clone();
     let settings = settings_listbox.clone();
     let details = details_page.clone();
+    let client = client.clone();
 
     row.connect_activated(move |_| {
         let zone = zone_name.clone();
         let stack = stack.clone();
         let settings = settings.clone();
         let details = details.clone();
+        let client_clone = client.clone();
 
         glib::spawn_future_local(async move {
-            load_zone_details(&zone, &stack, &settings, &details).await;
+            load_zone_details(&client_clone, &zone, &stack, &settings, &details).await;
         });
     });
 
@@ -254,6 +279,7 @@ fn build_zone_row(
 }
 
 async fn load_zone_details(
+    client: &FirewallClient,
     zone_name: &str,
     stack: &gtk::Stack,
     settings_listbox: &gtk::ListBox,
@@ -262,7 +288,7 @@ async fn load_zone_details(
     clear_listbox(settings_listbox);
     details_page.set_title(&format!("Zone: {}", zone_name));
 
-    match crate::firewall_dbus_api::fetch_zone_settings(zone_name).await {
+    match client.fetch_zone_settings(zone_name).await {
         Ok(settings) => {
             for (key, variant) in settings {
                 if let Ok(val) = String::try_from(variant.clone()) {
@@ -293,6 +319,7 @@ async fn load_zone_details(
                             let listbox_clone = settings_listbox.clone();
                             let stack_clone = stack.clone();
                             let details_clone = details_page.clone();
+                            let client_rm = client.clone();
 
                             remove_btn.connect_clicked(move |_| {
                                 let z = z_name.clone();
@@ -300,11 +327,12 @@ async fn load_zone_details(
                                 let listbox = listbox_clone.clone();
                                 let stack = stack_clone.clone();
                                 let details = details_clone.clone();
+                                let c = client_rm.clone();
 
                                 glib::spawn_future_local(async move {
-                                    match crate::firewall_dbus_api::remove_service_to_zone(&z, &s).await {
+                                    match c.remove_service_to_zone(&z, &s).await {
                                         Ok(_) => {
-                                            load_zone_details(&z, &stack, &listbox, &details).await;
+                                            load_zone_details(&c, &z, &stack, &listbox, &details).await;
                                         }
                                         Err(e) => eprintln!("Error removing service from zone: {}", e),
                                     }
@@ -330,9 +358,11 @@ async fn load_zone_details(
                         let listbox_clone = settings_listbox.clone();
                         let stack_clone = stack.clone();
                         let details_clone = details_page.clone();
+                        let client_add = client.clone();
 
                         add_service_row.connect_activated(move |_| {
                             show_add_service_to_zone_dialog(
+                                client_add.clone(),
                                 z_name_clone.clone(),
                                 listbox_clone.clone(),
                                 stack_clone.clone(),
@@ -360,13 +390,14 @@ async fn load_zone_details(
 }
 
 fn show_add_service_to_zone_dialog(
+    client: FirewallClient,
     zone: String,
     listbox: gtk::ListBox,
     stack: gtk::Stack,
     details_page: adw::StatusPage,
 ) {
     glib::spawn_future_local(async move {
-        let services = crate::firewall_dbus_api::fetch_services().await.unwrap_or_default();
+        let services = client.fetch_services().await.unwrap_or_default();
 
         let dialog = adw::AlertDialog::builder()
             .heading(&format!("Add Service to {}", zone))
@@ -410,9 +441,9 @@ fn show_add_service_to_zone_dialog(
             let selected_idx = combo.selected() as usize;
             let timeout = timeout_entry.text().parse::<i32>().unwrap_or(0);
             if let Some(new_svc) = services.get(selected_idx) {
-                match crate::firewall_dbus_api::add_service_to_zone(&zone, new_svc, timeout).await {
+                match client.add_service_to_zone(&zone, new_svc, timeout).await {
                     Ok(_) => {
-                        load_zone_details(&zone, &stack, &listbox, &details_page).await;
+                        load_zone_details(&client, &zone, &stack, &listbox, &details_page).await;
                     }
                     Err(e) => eprintln!("Error adding service to zone: {}", e),
                 }
@@ -421,12 +452,12 @@ fn show_add_service_to_zone_dialog(
     });
 }
 
-async fn reload_services(listbox: &gtk::ListBox) {
+async fn reload_services(client: &FirewallClient, listbox: &gtk::ListBox) {
     clear_listbox(listbox);
-    match crate::firewall_dbus_api::fetch_services().await {
+    match client.fetch_services().await {
         Ok(services) => {
             for svc in services {
-                let row = build_service_row(&svc, listbox);
+                let row = build_service_row(client, &svc, listbox);
                 listbox.append(&row);
             }
         }
@@ -439,7 +470,7 @@ async fn reload_services(listbox: &gtk::ListBox) {
     }
 }
 
-fn build_service_row(service_name: &str, services_listbox: &gtk::ListBox) -> adw::ActionRow {
+fn build_service_row(client: &FirewallClient, service_name: &str, services_listbox: &gtk::ListBox) -> adw::ActionRow {
     let row = adw::ActionRow::builder()
         .title(service_name)
         .activatable(false)
@@ -454,13 +485,17 @@ fn build_service_row(service_name: &str, services_listbox: &gtk::ListBox) -> adw
 
     let svc_name_edit = service_name.to_string();
     let list_edit = services_listbox.clone();
+    let client_edit = client.clone();
+
     edit_btn.connect_clicked(move |_| {
         let sn = svc_name_edit.clone();
         let list = list_edit.clone();
+        let c = client_edit.clone();
+
         glib::spawn_future_local(async move {
-            match crate::firewall_dbus_api::fetch_service_settings(&sn).await {
+            match c.fetch_service_settings(&sn).await {
                 Ok((_ver, _name, desc, ports, _mods, _dests, _includes, _src_ports)) => {
-                    show_edit_service_dialog(sn, desc, ports, list);
+                    show_edit_service_dialog(c.clone(), sn, desc, ports, list);
                 }
                 Err(e) => eprintln!("Error fetching service settings: {e}"),
             }
@@ -476,9 +511,12 @@ fn build_service_row(service_name: &str, services_listbox: &gtk::ListBox) -> adw
 
     let svc_name_rm = service_name.to_string();
     let list_rm = services_listbox.clone();
+    let client_rm = client.clone();
+
     remove_btn.connect_clicked(move |_| {
         let sn = svc_name_rm.clone();
         let list = list_rm.clone();
+        let c = client_rm.clone();
 
         let dialog = adw::AlertDialog::builder()
             .heading("Remove service?")
@@ -493,8 +531,8 @@ fn build_service_row(service_name: &str, services_listbox: &gtk::ListBox) -> adw
         glib::spawn_future_local(async move {
             let response = dialog.choose_future(&list).await;
             if response == "remove" {
-                match crate::firewall_dbus_api::remove_service(&sn).await {
-                    Ok(_) => reload_services(&list).await,
+                match c.remove_service(&sn).await {
+                    Ok(_) => reload_services(&c, &list).await,
                     Err(e) => eprintln!("Error removing service: {e}"),
                 }
             }
@@ -506,7 +544,7 @@ fn build_service_row(service_name: &str, services_listbox: &gtk::ListBox) -> adw
     row
 }
 
-fn show_add_service_dialog(listbox: gtk::ListBox) {
+fn show_add_service_dialog(client: FirewallClient, listbox: gtk::ListBox) {
     let dialog = adw::AlertDialog::builder()
         .heading("Add Service")
         .build();
@@ -543,8 +581,8 @@ fn show_add_service_dialog(listbox: gtk::ListBox) {
             let name = name_entry.text().to_string();
             let desc = desc_entry.text().to_string();
             let ports = parse_ports(&ports_entry.text());
-            match crate::firewall_dbus_api::add_service(&name, &desc, ports).await {
-                Ok(_) => reload_services(&listbox).await,
+            match client.add_service(&name, &desc, ports).await {
+                Ok(_) => reload_services(&client, &listbox).await,
                 Err(e) => eprintln!("Error adding service: {e}"),
             }
         }
@@ -552,6 +590,7 @@ fn show_add_service_dialog(listbox: gtk::ListBox) {
 }
 
 fn show_edit_service_dialog(
+    client: FirewallClient,
     service_name: String,
     current_desc: String,
     current_ports: Vec<(String, String)>,
@@ -598,8 +637,8 @@ fn show_edit_service_dialog(
         if response == "save" {
             let new_desc = desc_entry.text().to_string();
             let new_ports = parse_ports(&ports_entry.text());
-            match crate::firewall_dbus_api::edit_service(&service_name, &new_desc, new_ports).await {
-                Ok(_) => reload_services(&listbox).await,
+            match client.edit_service(&service_name, &new_desc, new_ports).await {
+                Ok(_) => reload_services(&client, &listbox).await,
                 Err(e) => eprintln!("Error editing service: {e}"),
             }
         }
@@ -619,10 +658,10 @@ fn parse_ports(input: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-async fn reload_interfaces(listbox: &gtk::ListBox) {
+async fn reload_interfaces(client: &FirewallClient, listbox: &gtk::ListBox) {
     clear_listbox(listbox);
 
-    match crate::firewall_dbus_api::fetch_interfaces().await {
+    match client.fetch_interfaces().await {
         Ok(interfaces) => {
             if interfaces.is_empty() {
                 let empty_row = adw::ActionRow::builder()
@@ -633,7 +672,7 @@ async fn reload_interfaces(listbox: &gtk::ListBox) {
             }
 
             for iface in interfaces {
-                let current_zone = crate::firewall_dbus_api::fetch_zone_of_interface(&iface)
+                let current_zone = client.fetch_zone_of_interface(&iface)
                     .await
                     .unwrap_or_else(|e| { eprintln!("Error fetching zone for {iface}: {e}"); "Unknown".to_string() });
 
@@ -652,9 +691,10 @@ async fn reload_interfaces(listbox: &gtk::ListBox) {
                 let list_clone = listbox.clone();
                 let iface_clone = iface.clone();
                 let zone_clone = current_zone.clone();
+                let client_clone = client.clone();
 
                 change_btn.connect_clicked(move |_| {
-                    show_change_zone_dialog(iface_clone.clone(), zone_clone.clone(), list_clone.clone());
+                    show_change_zone_dialog(client_clone.clone(), iface_clone.clone(), zone_clone.clone(), list_clone.clone());
                 });
 
                 row.add_suffix(&change_btn);
@@ -670,9 +710,9 @@ async fn reload_interfaces(listbox: &gtk::ListBox) {
     }
 }
 
-fn show_change_zone_dialog(interface: String, current_zone: String, listbox: gtk::ListBox) {
+fn show_change_zone_dialog(client: FirewallClient, interface: String, current_zone: String, listbox: gtk::ListBox) {
     glib::spawn_future_local(async move {
-        let zones = crate::firewall_dbus_api::fetch_zones().await.unwrap_or_default();
+        let zones = client.fetch_zones().await.unwrap_or_default();
 
         let dialog = adw::AlertDialog::builder()
             .heading(&format!("Change Zone for {}", interface))
@@ -710,8 +750,8 @@ fn show_change_zone_dialog(interface: String, current_zone: String, listbox: gtk
         if response == "save" {
             let selected_idx = combo.selected() as usize;
             if let Some(new_zone) = zones.get(selected_idx) {
-                match crate::firewall_dbus_api::change_zone_interface(new_zone, &interface).await {
-                    Ok(_) => reload_interfaces(&listbox).await,
+                match client.change_zone_interface(new_zone, &interface).await {
+                    Ok(_) => reload_interfaces(&client, &listbox).await,
                     Err(e) => eprintln!("Error changing zone: {}", e),
                 }
             }

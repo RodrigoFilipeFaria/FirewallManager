@@ -125,162 +125,162 @@ trait Systemd {
     fn start_unit(&self, name: &str, mode: &str) -> zbus::Result<OwnedObjectPath>;
 }
 
-pub async fn fetch_default_zone() -> Result<String> {
-    let connection = Connection::system().await?;
-    let proxy = FirewalldProxy::new(&connection).await?;
-    proxy.get_default_zone().await
+#[derive(Clone)]
+pub struct FirewallClient {
+    connection: Connection,
 }
 
-pub async fn fetch_state() -> Result<String> {
-    let connection = Connection::system().await?;
-    let proxy = FirewalldProxy::new(&connection).await?;
-    proxy.get_state().await
-}
+impl FirewallClient {
+    pub async fn new() -> Result<Self> {
+        let connection = Connection::system().await?;
+        Ok(Self { connection })
+    }
 
-pub async fn fetch_zones() -> Result<Vec<String>> {
-    let connection = Connection::system().await?;
-    let proxy = FirewalldZoneProxy::new(&connection).await?;
-    proxy.get_zones().await
-}
+    pub async fn fetch_default_zone(&self) -> Result<String> {
+        let proxy = FirewalldProxy::new(&self.connection).await?;
+        proxy.get_default_zone().await
+    }
 
-pub async fn fetch_zone_settings(zone_name: &str) -> Result<HashMap<String, OwnedValue>> {
-    let connection = Connection::system().await?;
-    let proxy = FirewalldZoneProxy::new(&connection).await?;
-    proxy.get_zone_settings(zone_name).await
-}
+    pub async fn fetch_state(&self) -> Result<String> {
+        let proxy = FirewalldProxy::new(&self.connection).await?;
+        proxy.get_state().await
+    }
 
-pub async fn change_zone_interface(zone : &str, interface: &str) -> Result<String> {
-    let connection = Connection::system().await?;
-    let proxy = FirewalldZoneProxy::new(&connection).await?;
-    let change = proxy.set_zone_interface(zone, interface).await?;
-    Ok(change)
-}
+    pub async fn fetch_zones(&self) -> Result<Vec<String>> {
+        let proxy = FirewalldZoneProxy::new(&self.connection).await?;
+        proxy.get_zones().await
+    }
 
-pub async fn fetch_interfaces() -> Result<Vec<String>> {
-    let mut interfaces = Vec::new();
-    if let Ok(entries) = std::fs::read_dir("/sys/class/net") {
-        for entry in entries.flatten() {
-            if let Ok(name) = entry.file_name().into_string() {
-                if name != "lo" {
-                    interfaces.push(name);
+    pub async fn fetch_zone_settings(&self, zone_name: &str) -> Result<HashMap<String, OwnedValue>> {
+        let proxy = FirewalldZoneProxy::new(&self.connection).await?;
+        proxy.get_zone_settings(zone_name).await
+    }
+
+    pub async fn change_zone_interface(&self, zone: &str, interface: &str) -> Result<String> {
+        let proxy = FirewalldZoneProxy::new(&self.connection).await?;
+        let change = proxy.set_zone_interface(zone, interface).await?;
+        Ok(change)
+    }
+
+    pub async fn fetch_interfaces(&self) -> Result<Vec<String>> {
+        let mut interfaces = Vec::new();
+        if let Ok(entries) = std::fs::read_dir("/sys/class/net") {
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    if name != "lo" {
+                        interfaces.push(name);
+                    }
                 }
             }
         }
+        interfaces.sort();
+        Ok(interfaces)
     }
-    interfaces.sort();
-    Ok(interfaces)
-}
 
-pub async fn fetch_zone_of_interface(interface: &str) -> Result<String> {
-    let connection = Connection::system().await?;
-    let proxy = FirewalldZoneProxy::new(&connection).await?;
-    proxy.get_zone_of_interface(interface).await
-}
+    pub async fn fetch_zone_of_interface(&self, interface: &str) -> Result<String> {
+        let proxy = FirewalldZoneProxy::new(&self.connection).await?;
+        proxy.get_zone_of_interface(interface).await
+    }
 
-pub async fn add_service_to_zone(zone: &str, service: &str, timeout: i32) -> Result<String> {
-    let connection = Connection::system().await?;
-    let proxy = FirewalldZoneProxy::new(&connection).await?;
-    let services = proxy.add_service_zone(zone, service, timeout).await?;
-    Ok(services)
-}
+    pub async fn add_service_to_zone(&self, zone: &str, service: &str, timeout: i32) -> Result<String> {
+        let proxy = FirewalldZoneProxy::new(&self.connection).await?;
+        let services = proxy.add_service_zone(zone, service, timeout).await?;
+        Ok(services)
+    }
 
-pub async fn remove_service_to_zone(zone: &str, service: &str) -> Result<String> {
-    let connection = Connection::system().await?;
-    let proxy = FirewalldZoneProxy::new(&connection).await?;
-    let services = proxy.remove_service_zone(zone, service).await?;
-    Ok(services)
-}
+    pub async fn remove_service_to_zone(&self, zone: &str, service: &str) -> Result<String> {
+        let proxy = FirewalldZoneProxy::new(&self.connection).await?;
+        let services = proxy.remove_service_zone(zone, service).await?;
+        Ok(services)
+    }
 
-pub async fn fetch_services() -> Result<Vec<String>> {
-    let connection = Connection::system().await?;
-    let proxy = FirewalldProxy::new(&connection).await?;
-    let mut services = proxy.list_services().await?;
-    services.sort();
-    Ok(services)
-}
+    pub async fn fetch_services(&self) -> Result<Vec<String>> {
+        let proxy = FirewalldProxy::new(&self.connection).await?;
+        let mut services = proxy.list_services().await?;
+        services.sort();
+        Ok(services)
+    }
 
-pub async fn fetch_service_settings(service_name: &str) -> Result<ServiceSettings> {
-    let connection = Connection::system().await?;
-    let config = FirewalldConfigProxy::new(&connection).await?;
-    let path = config.get_service_by_name(service_name).await?;
-    let svc = FirewalldConfigServiceProxy::builder(&connection)
-        .path(path)?
-        .build()
+    pub async fn fetch_service_settings(&self, service_name: &str) -> Result<ServiceSettings> {
+        let config = FirewalldConfigProxy::new(&self.connection).await?;
+        let path = config.get_service_by_name(service_name).await?;
+        let svc = FirewalldConfigServiceProxy::builder(&self.connection)
+            .path(path)?
+            .build()
+            .await?;
+        svc.get_settings().await
+    }
+
+    pub async fn add_service(
+        &self,
+        name: &str,
+        description: &str,
+        ports: Vec<(String, String)>,
+    ) -> Result<()> {
+        let proxy = FirewalldConfigProxy::new(&self.connection).await?;
+        proxy
+            .add_service(
+                name,
+                ("", name, description, ports, vec![], HashMap::new()),
+            )
+            .await?;
+        let runtime = FirewalldProxy::new(&self.connection).await?;
+        runtime.reload().await?;
+        Ok(())
+    }
+
+    pub async fn remove_service(&self, service_name: &str) -> Result<()> {
+        let config = FirewalldConfigProxy::new(&self.connection).await?;
+        let path = config.get_service_by_name(service_name).await?;
+        let svc = FirewalldConfigServiceProxy::builder(&self.connection)
+            .path(path)?
+            .build()
+            .await?;
+        svc.remove().await?;
+        let runtime = FirewalldProxy::new(&self.connection).await?;
+        runtime.reload().await?;
+        Ok(())
+    }
+
+    pub async fn edit_service(
+        &self,
+        service_name: &str,
+        new_description: &str,
+        new_ports: Vec<(String, String)>,
+    ) -> Result<()> {
+        let config = FirewalldConfigProxy::new(&self.connection).await?;
+        let path = config.get_service_by_name(service_name).await?;
+        let svc = FirewalldConfigServiceProxy::builder(&self.connection)
+            .path(path)?
+            .build()
+            .await?;
+        let (version, short, _old_desc, _old_ports, modules, destinations, _includes, _src_ports) =
+            svc.get_settings().await?;
+
+        svc.update((
+            &version,
+            &short,
+            new_description,
+            new_ports,
+            modules,
+            destinations,
+        ))
         .await?;
-    svc.get_settings().await
-}
 
-pub async fn add_service(
-    name: &str,
-    description: &str,
-    ports: Vec<(String, String)>,
-) -> Result<()> {
-    let connection = Connection::system().await?;
-    let proxy = FirewalldConfigProxy::new(&connection).await?;
-    proxy
-        .add_service(
-            name,
-            ("", name, description, ports, vec![], HashMap::new()),
-        )
-        .await?;
-    let runtime = FirewalldProxy::new(&connection).await?;
-    runtime.reload().await?;
-    Ok(())
-}
+        let runtime = FirewalldProxy::new(&self.connection).await?;
+        runtime.reload().await?;
+        Ok(())
+    }
 
-pub async fn remove_service(service_name: &str) -> Result<()> {
-    let connection = Connection::system().await?;
-    let config = FirewalldConfigProxy::new(&connection).await?;
-    let path = config.get_service_by_name(service_name).await?;
-    let svc = FirewalldConfigServiceProxy::builder(&connection)
-        .path(path)?
-        .build()
-        .await?;
-    svc.remove().await?;
-    let runtime = FirewalldProxy::new(&connection).await?;
-    runtime.reload().await?;
-    Ok(())
-}
+    pub async fn disable_firewall(&self) -> Result<()> {
+        let proxy = SystemdProxy::new(&self.connection).await?;
+        proxy.stop_unit("firewalld.service", "replace").await?;
+        Ok(())
+    }
 
-pub async fn edit_service(
-    service_name: &str,
-    new_description: &str,
-    new_ports: Vec<(String, String)>,
-) -> Result<()> {
-    let connection = Connection::system().await?;
-    let config = FirewalldConfigProxy::new(&connection).await?;
-    let path = config.get_service_by_name(service_name).await?;
-    let svc = FirewalldConfigServiceProxy::builder(&connection)
-        .path(path)?
-        .build()
-        .await?;
-    let (version, short, _old_desc, _old_ports, modules, destinations, _includes, _src_ports) =
-        svc.get_settings().await?;
-    svc.update((
-        &version,
-        &short,
-        new_description,
-        new_ports,
-        modules,
-        destinations,
-    ))
-    .await?;
-    let runtime = FirewalldProxy::new(&connection).await?;
-    runtime.reload().await?;
-    Ok(())
+    pub async fn enable_firewall(&self) -> Result<()> {
+        let proxy = SystemdProxy::new(&self.connection).await?;
+        proxy.start_unit("firewalld.service", "replace").await?;
+        Ok(())
+    }
 }
-
-pub async fn disable_firewall() -> Result<()> {
-    let connection = Connection::system().await?;
-    let proxy = SystemdProxy::new(&connection).await?;
-    proxy.stop_unit("firewalld.service", "replace").await?;
-    Ok(())
-}
-
-pub async fn enable_firewall() -> Result<()> {
-    let connection = Connection::system().await?;
-    let proxy = SystemdProxy::new(&connection).await?;
-    proxy.start_unit("firewalld.service", "replace").await?;
-    Ok(())
-}
-
