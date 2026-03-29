@@ -34,6 +34,8 @@ mod imp {
         #[template_child]
         pub add_service_button: TemplateChild<gtk::Button>,
         #[template_child]
+        pub services_search_entry: TemplateChild<gtk::SearchEntry>,
+        #[template_child]
         pub interfaces_listbox: TemplateChild<gtk::ListBox>,
     }
 
@@ -145,11 +147,28 @@ mod imp {
         fn setup_services(&self, client: &FirewallClient, toast_overlay: &adw::ToastOverlay) {
             let services_listbox = self.services_listbox.clone();
             let add_service_button = self.add_service_button.clone();
+            let services_search_entry = self.services_search_entry.clone();
 
             let client_for_reload = client.clone();
             let client_for_dialog = client.clone();
             let overlay = toast_overlay.clone();
             let overlay_dialog = toast_overlay.clone();
+
+            let search_entry_clone = services_search_entry.clone();
+            services_listbox.set_filter_func(move |row| {
+                if let Some(action_row) = row.downcast_ref::<adw::ActionRow>() {
+                    let title = action_row.title().to_string().to_lowercase();
+                    let query = search_entry_clone.text().to_string().to_lowercase();
+                    title.contains(&query)
+                } else {
+                    true
+                }
+            });
+
+            let listbox_search = services_listbox.clone();
+            services_search_entry.connect_search_changed(move |_| {
+                listbox_search.invalidate_filter();
+            });
 
             glib::spawn_future_local(async move {
                 reload_services(&client_for_reload, &services_listbox, &overlay).await;
