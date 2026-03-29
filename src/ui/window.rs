@@ -3,13 +3,13 @@ use adw::prelude::*;
 use std::convert::TryFrom;
 use adw::subclass::prelude::*;
 use gtk::{gio, glib};
-use crate::firewall_dbus_api::FirewallClient;
+use crate::backend::FirewallClient;
 
 mod imp {
     use super::*;
 
     #[derive(Debug, Default, gtk::CompositeTemplate)]
-    #[template(resource = "/com/github/rodrigofilipefaria/FirewallManager/window.ui")]
+    #[template(resource = "/com/github/rodrigofilipefaria/FirewallManager/ui/window.ui")]
     pub struct FirewallManagerWindow {
         #[template_child]
         pub toast_overlay: TemplateChild<adw::ToastOverlay>,
