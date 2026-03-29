@@ -9,59 +9,64 @@
     <property name="content">
       <object class="AdwToastOverlay" id="toast_overlay">
         <property name="child">
-      <object class="AdwToolbarView">
-
-        <child type="top">
-          <object class="AdwHeaderBar">
-            <property name="title-widget">
-              <object class="GtkBox" id="mode_segmented_buttons">
-                <property name="valign">center</property>
-                <style>
-                  <class name="linked"/>
-                </style>
-                <child>
-                  <object class="GtkToggleButton" id="mode_runtime_button">
-                    <property name="label" translatable="yes">Runtime</property>
-                    <property name="active">True</property>
+          <object class="AdwNavigationSplitView" id="split_view">
+            <property name="sidebar">
+              <object class="AdwNavigationPage">
+                <property name="title" translatable="yes">Menu</property>
+                <property name="child">
+                  <object class="AdwToolbarView">
+                    <child type="top">
+                      <object class="AdwHeaderBar">
+                        <child type="end">
+                          <object class="GtkMenuButton">
+                            <property name="primary">True</property>
+                            <property name="icon-name">open-menu-symbolic</property>
+                            <property name="tooltip-text" translatable="yes">Main Menu</property>
+                            <property name="menu-model">primary_menu</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <property name="content">
+                      <object class="GtkStackSidebar">
+                        <property name="stack">main_stack</property>
+                      </object>
+                    </property>
                   </object>
-                </child>
-                <child>
-                  <object class="GtkToggleButton" id="mode_permanent_button">
-                    <property name="label" translatable="yes">Permanent</property>
-                    <property name="group">mode_runtime_button</property>
-                  </object>
-                </child>
+                </property>
               </object>
             </property>
-            <child type="end">
-              <object class="GtkMenuButton">
-                <property name="primary">True</property>
-                <property name="icon-name">open-menu-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Main Menu</property>
-                <property name="menu-model">primary_menu</property>
-              </object>
-            </child>
-          </object>
-        </child>
-
-        <property name="content">
-          <object class="GtkBox">
-            <property name="orientation">horizontal</property>
-
-            <child>
-              <object class="GtkStackSidebar">
-                <property name="stack">main_stack</property>
-              </object>
-            </child>
-
-            <child>
-              <object class="GtkSeparator">
-                <property name="orientation">vertical</property>
-              </object>
-            </child>
-
-            <child>
-              <object class="GtkStack" id="main_stack">
+            <property name="content">
+              <object class="AdwNavigationPage">
+                <property name="title" translatable="yes">Firewall</property>
+                <property name="child">
+                  <object class="AdwToolbarView">
+                    <child type="top">
+                      <object class="AdwHeaderBar">
+                        <property name="title-widget">
+                          <object class="GtkBox" id="mode_segmented_buttons">
+                            <property name="valign">center</property>
+                            <style>
+                              <class name="linked"/>
+                            </style>
+                            <child>
+                              <object class="GtkToggleButton" id="mode_runtime_button">
+                                <property name="label" translatable="yes">Runtime</property>
+                                <property name="active">True</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkToggleButton" id="mode_permanent_button">
+                                <property name="label" translatable="yes">Permanent</property>
+                                <property name="group">mode_runtime_button</property>
+                              </object>
+                            </child>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <property name="content">
+                      <object class="GtkStack" id="main_stack">
                 <property name="hexpand">True</property>
                 <property name="transition-type">crossfade</property>
 
@@ -278,11 +283,13 @@
                 </child>
 
 
+                      </object>
+                    </property>
+                  </object>
+                </property>
               </object>
-            </child>
+            </property>
           </object>
-        </property>
-      </object>
         </property>
       </object>
     </property>

@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=Firewall_manager
+Name=Firewall Manager
 Exec=firewall_manager
 Icon=com.github.rodrigofilipefaria.FirewallManager
 Terminal=false

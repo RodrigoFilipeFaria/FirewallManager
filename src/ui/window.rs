@@ -10,6 +10,8 @@ mod imp {
     #[template(resource = "/com/github/rodrigofilipefaria/FirewallManager/ui/window.ui")]
     pub struct FirewallManagerWindow {
         #[template_child]
+        pub split_view: TemplateChild<adw::NavigationSplitView>,
+        #[template_child]
         pub toast_overlay: TemplateChild<adw::ToastOverlay>,
         #[template_child]
         pub status_page: TemplateChild<adw::StatusPage>,
@@ -166,10 +168,18 @@ mod imp {
 
         fn setup_navigation(&self, client: &FirewallClient, toast_overlay: &adw::ToastOverlay) {
             let main_stack = self.main_stack.clone();
+            let split_view = self.split_view.clone();
             let load_button = self.load_button.clone();
             let state_label = self.state_label.clone();
             let client = client.clone();
             let overlay = toast_overlay.clone();
+
+            main_stack.connect_visible_child_notify(glib::clone!(
+                #[strong] split_view,
+                move |_| {
+                    split_view.set_show_content(true);
+                }
+            ));
 
             self.back_button.connect_clicked(glib::clone!(
                 #[strong] main_stack,
