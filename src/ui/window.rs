@@ -1,5 +1,4 @@
 use gtk::prelude::*;
-use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gtk::{gio, glib};
 use crate::backend::FirewallClient;
@@ -36,6 +35,14 @@ mod imp {
         pub services_search_entry: TemplateChild<gtk::SearchEntry>,
         #[template_child]
         pub interfaces_listbox: TemplateChild<gtk::ListBox>,
+        #[template_child]
+        pub mode_runtime_button: TemplateChild<gtk::ToggleButton>,
+        #[template_child]
+        pub mode_permanent_button: TemplateChild<gtk::ToggleButton>,
+        #[template_child]
+        pub make_permanent_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub reload_firewall_button: TemplateChild<gtk::Button>,
     }
 
     #[glib::object_subclass]
@@ -69,6 +76,7 @@ mod imp {
                         imp.setup_zones_list(&client, &toast_overlay);
                         imp.setup_services(&client, &toast_overlay);
                         imp.setup_navigation(&client, &toast_overlay);
+                        imp.setup_modes(&client, &toast_overlay);
                     }
                     Err(e) => {
                         eprintln!("Failed to connect to D-Bus: {}", e);
@@ -79,6 +87,51 @@ mod imp {
     }
 
     impl FirewallManagerWindow {
+        fn setup_modes(&self, client: &FirewallClient, toast_overlay: &adw::ToastOverlay) {
+            let client_mode = client.clone();
+            let overlay_mode = toast_overlay.clone();
+            let obj = self.obj().clone();
+            
+            self.mode_permanent_button.connect_toggled(move |btn| {
+                let is_permanent = btn.is_active();
+                client_mode.set_permanent_mode(is_permanent);
+                
+                let imp = obj.imp();
+                imp.setup_firewall_state(&client_mode, &overlay_mode);
+                imp.setup_zones_list(&client_mode, &overlay_mode);
+                imp.setup_services(&client_mode, &overlay_mode);
+                
+                let msg = if is_permanent { "Switched to Permanent Configuration" } else { "Switched to Runtime Configuration" };
+                crate::ui::utils::show_toast(&overlay_mode, msg);
+            });
+
+            let client_save = client.clone();
+            let overlay_save = toast_overlay.clone();
+            self.make_permanent_button.connect_clicked(move |_| {
+                let c = client_save.clone();
+                let o = overlay_save.clone();
+                glib::spawn_future_local(async move {
+                    match c.runtime_to_permanent().await {
+                        Ok(_) => crate::ui::utils::show_toast(&o, "Runtime configuration saved to permanent."),
+                        Err(e) => crate::ui::utils::show_toast(&o, &format!("Failed to save config: {}", e)),
+                    }
+                });
+            });
+
+            let client_reload = client.clone();
+            let overlay_reload = toast_overlay.clone();
+            self.reload_firewall_button.connect_clicked(move |_| {
+                let c = client_reload.clone();
+                let o = overlay_reload.clone();
+                glib::spawn_future_local(async move {
+                    match c.reload_firewall().await {
+                        Ok(_) => crate::ui::utils::show_toast(&o, "Firewall reloaded successfully."),
+                        Err(e) => crate::ui::utils::show_toast(&o, &format!("Failed to reload firewall: {}", e)),
+                    }
+                });
+            });
+        }
+
         fn setup_firewall_state(&self, client: &FirewallClient, toast_overlay: &adw::ToastOverlay) {
             crate::ui::dashboard::setup_firewall_state(
                 client.clone(),

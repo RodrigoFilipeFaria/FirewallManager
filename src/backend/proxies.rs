@@ -21,6 +21,8 @@ pub(crate) trait Firewalld {
     fn list_services(&self) -> zbus::Result<Vec<String>>;
     #[zbus(name = "reload")]
     fn reload(&self) -> zbus::Result<()>;
+    #[zbus(name = "runtimeToPermanent")]
+    fn runtime_to_permanent(&self) -> zbus::Result<()>;
 }
 
 #[proxy(
@@ -53,10 +55,37 @@ pub(crate) trait FirewalldZone {
 pub(crate) trait FirewalldConfig {
     #[zbus(name = "listServices")]
     fn list_services(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
+    #[zbus(name = "getServiceNames")]
+    fn get_service_names(&self) -> zbus::Result<Vec<String>>;
     #[zbus(name = "addService")]
     fn add_service(&self, service: &str, settings: (&str, &str, &str, Vec<(String, String)>, Vec<String>, HashMap<String, String>)) -> zbus::Result<OwnedObjectPath>;
     #[zbus(name = "getServiceByName")]
     fn get_service_by_name(&self, service: &str) -> zbus::Result<OwnedObjectPath>;
+    #[zbus(name = "getZoneNames")]
+    fn get_zone_names(&self) -> zbus::Result<Vec<String>>;
+    #[zbus(name = "getZoneByName")]
+    fn get_zone_by_name(&self, zone: &str) -> zbus::Result<OwnedObjectPath>;
+    #[zbus(name = "getZoneOfInterface")]
+    fn get_zone_of_interface(&self, interface: &str) -> zbus::Result<String>;
+}
+
+#[proxy(
+    interface = "org.fedoraproject.FirewallD1.config.zone",
+    default_service = "org.fedoraproject.FirewallD1",
+)]
+pub(crate) trait FirewalldConfigZone {
+    #[zbus(name = "getSettings2")]
+    fn get_settings(&self) -> zbus::Result<HashMap<String, OwnedValue>>;
+    #[zbus(name = "getInterfaces")]
+    fn get_interfaces(&self) -> zbus::Result<Vec<String>>;
+    #[zbus(name = "addInterface")]
+    fn add_interface(&self, interface: &str) -> zbus::Result<()>;
+    #[zbus(name = "removeInterface")]
+    fn remove_interface(&self, interface: &str) -> zbus::Result<()>;
+    #[zbus(name = "addService")]
+    fn add_service(&self, service: &str) -> zbus::Result<()>;
+    #[zbus(name = "removeService")]
+    fn remove_service(&self, service: &str) -> zbus::Result<()>;
 }
 
 #[proxy(

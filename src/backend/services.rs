@@ -5,10 +5,17 @@ use super::proxies::{FirewalldProxy, FirewalldConfigProxy, FirewalldConfigServic
 
 impl FirewallClient {
     pub async fn fetch_services(&self) -> Result<Vec<String>> {
-        let proxy = FirewalldProxy::new(&self.connection).await?;
-        let mut services = proxy.list_services().await?;
-        services.sort();
-        Ok(services)
+        if self.is_permanent_mode() {
+            let config_proxy = FirewalldConfigProxy::new(&self.connection).await?;
+            let mut services = config_proxy.get_service_names().await?;
+            services.sort();
+            Ok(services)
+        } else {
+            let proxy = FirewalldProxy::new(&self.connection).await?;
+            let mut services = proxy.list_services().await?;
+            services.sort();
+            Ok(services)
+        }
     }
 
     pub async fn fetch_service_settings(&self, service_name: &str) -> Result<ServiceSettings> {
@@ -34,8 +41,6 @@ impl FirewallClient {
                 ("", name, description, ports, vec![], HashMap::new()),
             )
             .await?;
-        let runtime = FirewalldProxy::new(&self.connection).await?;
-        runtime.reload().await?;
         Ok(())
     }
 
@@ -47,8 +52,6 @@ impl FirewallClient {
             .build()
             .await?;
         svc.remove().await?;
-        let runtime = FirewalldProxy::new(&self.connection).await?;
-        runtime.reload().await?;
         Ok(())
     }
 
@@ -77,8 +80,6 @@ impl FirewallClient {
         ))
         .await?;
 
-        let runtime = FirewalldProxy::new(&self.connection).await?;
-        runtime.reload().await?;
         Ok(())
     }
 }

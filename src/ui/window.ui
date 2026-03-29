@@ -13,6 +13,26 @@
 
         <child type="top">
           <object class="AdwHeaderBar">
+            <property name="title-widget">
+              <object class="GtkBox" id="mode_segmented_buttons">
+                <property name="valign">center</property>
+                <style>
+                  <class name="linked"/>
+                </style>
+                <child>
+                  <object class="GtkToggleButton" id="mode_runtime_button">
+                    <property name="label" translatable="yes">Runtime</property>
+                    <property name="active">True</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkToggleButton" id="mode_permanent_button">
+                    <property name="label" translatable="yes">Permanent</property>
+                    <property name="group">mode_runtime_button</property>
+                  </object>
+                </child>
+              </object>
+            </property>
             <child type="end">
               <object class="GtkMenuButton">
                 <property name="primary">True</property>
@@ -77,6 +97,28 @@
                                   <object class="GtkButton" id="load_button">
                                     <property name="label" translatable="yes">Load Firewalld Configuration</property>
                                     <property name="css-classes">pill suggested-action</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
+                            <child>
+                              <object class="GtkBox">
+                                <property name="orientation">horizontal</property>
+                                <property name="spacing">16</property>
+                                <property name="halign">center</property>
+                                <child>
+                                  <object class="GtkButton" id="make_permanent_button">
+                                    <property name="label" translatable="yes">Save Runtime to Permanent</property>
+                                    <property name="icon-name">document-save-symbolic</property>
+                                    <property name="css-classes">pill</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkButton" id="reload_firewall_button">
+                                    <property name="label" translatable="yes">Reload Firewall</property>
+                                    <property name="icon-name">view-refresh-symbolic</property>
+                                    <property name="css-classes">pill</property>
                                   </object>
                                 </child>
                               </object>
