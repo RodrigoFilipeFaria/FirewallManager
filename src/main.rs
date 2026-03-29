@@ -20,11 +20,10 @@
 
 mod application;
 mod config;
-mod window;
-pub mod firewall_dbus_api;
+mod ui;
+mod backend;
 
 use self::application::FirewallManagerApplication;
-use self::window::FirewallManagerWindow;
 
 use config::{GETTEXT_PACKAGE, LOCALEDIR, PKGDATADIR};
 use gettextrs::{bind_textdomain_codeset, bindtextdomain, textdomain};

@@ -24,7 +24,7 @@ use adw::subclass::prelude::*;
 use gtk::{gio, glib};
 
 use crate::config::VERSION;
-use crate::FirewallManagerWindow;
+use crate::ui::window::FirewallManagerWindow;
 
 mod imp {
     use super::*;
