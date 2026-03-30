@@ -9,7 +9,7 @@
 Firewall Manager provides a clean and intuitive interface for configuring `firewalld`. Built with Rust and GTK4/libadwaita, it integrates seamlessly with the GNOME desktop environment, allowing users to effortlessly manage network zones, define custom services, and toggle runtime versus permanent firewall rules.
 
 <p align="center">
-  <img src="screenshot.png" alt="Firewall Manager Screenshot"> <!-- Placeholder for your actual project screenshot -->
+  <img src="data/screenshots/screenshot.png" alt="Firewall Manager Screenshot">
 </p>
 
 ## Features
