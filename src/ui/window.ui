@@ -44,21 +44,33 @@
                     <child type="top">
                       <object class="AdwHeaderBar">
                         <property name="title-widget">
-                          <object class="GtkBox" id="mode_segmented_buttons">
+                          <object class="GtkBox">
                             <property name="valign">center</property>
-                            <style>
-                              <class name="linked"/>
-                            </style>
+                            <property name="spacing">6</property>
                             <child>
-                              <object class="GtkToggleButton" id="mode_runtime_button">
-                                <property name="label" translatable="yes">Runtime</property>
-                                <property name="active">True</property>
+                              <object class="GtkBox" id="mode_segmented_buttons">
+                                <style>
+                                  <class name="linked"/>
+                                </style>
+                                <child>
+                                  <object class="GtkToggleButton" id="mode_runtime_button">
+                                    <property name="label" translatable="yes">Runtime</property>
+                                    <property name="active">True</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkToggleButton" id="mode_permanent_button">
+                                    <property name="label" translatable="yes">Permanent</property>
+                                    <property name="group">mode_runtime_button</property>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                             <child>
-                              <object class="GtkToggleButton" id="mode_permanent_button">
-                                <property name="label" translatable="yes">Permanent</property>
-                                <property name="group">mode_runtime_button</property>
+                              <object class="GtkButton" id="reload_firewall_button">
+                                <property name="icon-name">view-refresh-symbolic</property>
+                                <property name="tooltip-text" translatable="yes">Reload Firewall</property>
+                                <property name="valign">center</property>
                               </object>
                             </child>
                           </object>
@@ -107,27 +119,7 @@
                               </object>
                             </child>
 
-                            <child>
-                              <object class="GtkBox">
-                                <property name="orientation">horizontal</property>
-                                <property name="spacing">16</property>
-                                <property name="halign">center</property>
-                                <child>
-                                  <object class="GtkButton" id="make_permanent_button">
-                                    <property name="label" translatable="yes">Save Runtime to Permanent</property>
-                                    <property name="icon-name">document-save-symbolic</property>
-                                    <property name="css-classes">pill</property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkButton" id="reload_firewall_button">
-                                    <property name="label" translatable="yes">Reload Firewall</property>
-                                    <property name="icon-name">view-refresh-symbolic</property>
-                                    <property name="css-classes">pill</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
+
 
                             <child>
                               <object class="GtkListBox" id="interfaces_listbox">
@@ -285,6 +277,33 @@
 
                       </object>
                     </property>
+                    <child type="bottom">
+                      <object class="GtkActionBar" id="runtime_action_bar">
+                        <property name="revealed">False</property>
+                        <child type="end">
+                          <object class="GtkButton" id="make_permanent_button">
+                            <property name="label" translatable="yes">Save</property>
+                            <property name="tooltip-text" translatable="yes">Save runtime configuration changes to disk</property>
+                            <property name="valign">center</property>
+                            <style>
+                              <class name="suggested-action"/>
+                              <class name="pill"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child type="end">
+                          <object class="GtkButton" id="revert_changes_button">
+                            <property name="label" translatable="yes">Revert</property>
+                            <property name="tooltip-text" translatable="yes">Revert all unsaved Runtime changes</property>
+                            <property name="margin-end">6</property>
+                            <property name="valign">center</property>
+                            <style>
+                              <class name="pill"/>
+                            </style>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                   </object>
                 </property>
               </object>

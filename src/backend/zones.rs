@@ -79,6 +79,7 @@ impl FirewallClient {
         } else {
             let proxy = FirewalldZoneProxy::new(&self.connection).await?;
             let change = proxy.set_zone_interface(zone, interface).await?;
+            self.mark_unsaved();
             Ok(change)
         }
     }
@@ -92,7 +93,9 @@ impl FirewallClient {
             Ok("".to_string())
         } else {
             let proxy = FirewalldZoneProxy::new(&self.connection).await?;
-            proxy.add_service_zone(zone, service, timeout).await
+            let res = proxy.add_service_zone(zone, service, timeout).await?;
+            self.mark_unsaved();
+            Ok(res)
         }
     }
 
@@ -105,7 +108,9 @@ impl FirewallClient {
             Ok("".to_string())
         } else {
             let proxy = FirewalldZoneProxy::new(&self.connection).await?;
-            proxy.remove_service_zone(zone, service).await
+            let res = proxy.remove_service_zone(zone, service).await?;
+            self.mark_unsaved();
+            Ok(res)
         }
     }
 }

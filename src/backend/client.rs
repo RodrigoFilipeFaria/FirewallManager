@@ -1,18 +1,37 @@
 use zbus::{Connection, Result};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::sync::watch;
 use super::proxies::{FirewalldProxy, SystemdProxy};
 
 #[derive(Clone)]
 pub struct FirewallClient {
     pub(crate) connection: Connection,
     pub is_permanent: Arc<AtomicBool>,
+    pub unsaved_changes_tx: Arc<watch::Sender<bool>>,
+    pub unsaved_changes_rx: watch::Receiver<bool>,
 }
 
 impl FirewallClient {
     pub async fn new() -> Result<Self> {
         let connection = Connection::system().await?;
-        Ok(Self { connection, is_permanent: Arc::new(AtomicBool::new(false)) })
+        let (tx, rx) = watch::channel(false);
+        Ok(Self { 
+            connection, 
+            is_permanent: Arc::new(AtomicBool::new(false)),
+            unsaved_changes_tx: Arc::new(tx),
+            unsaved_changes_rx: rx,
+        })
+    }
+
+    pub fn mark_unsaved(&self) {
+        if !self.is_permanent_mode() {
+            let _ = self.unsaved_changes_tx.send(true);
+        }
+    }
+
+    pub fn clear_unsaved(&self) {
+        let _ = self.unsaved_changes_tx.send(false);
     }
 
     pub fn set_permanent_mode(&self, permanent: bool) {
@@ -25,12 +44,16 @@ impl FirewallClient {
 
     pub async fn reload_firewall(&self) -> Result<()> {
         let proxy = FirewalldProxy::new(&self.connection).await?;
-        proxy.reload().await
+        proxy.reload().await?;
+        self.clear_unsaved();
+        Ok(())
     }
 
     pub async fn runtime_to_permanent(&self) -> Result<()> {
         let proxy = FirewalldProxy::new(&self.connection).await?;
-        proxy.runtime_to_permanent().await
+        proxy.runtime_to_permanent().await?;
+        self.clear_unsaved();
+        Ok(())
     }
 
     pub async fn fetch_default_zone(&self) -> Result<String> {

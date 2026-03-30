@@ -12,6 +12,8 @@ mod imp {
         #[template_child]
         pub split_view: TemplateChild<adw::NavigationSplitView>,
         #[template_child]
+        pub runtime_action_bar: TemplateChild<gtk::ActionBar>,
+        #[template_child]
         pub toast_overlay: TemplateChild<adw::ToastOverlay>,
         #[template_child]
         pub status_page: TemplateChild<adw::StatusPage>,
@@ -45,6 +47,8 @@ mod imp {
         pub make_permanent_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub reload_firewall_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub revert_changes_button: TemplateChild<gtk::Button>,
     }
 
     #[glib::object_subclass]
@@ -94,6 +98,17 @@ mod imp {
             let overlay_mode = toast_overlay.clone();
             let obj = self.obj().clone();
             
+            let mut unsaved_rx = client.unsaved_changes_rx.clone();
+            let runtime_action_bar = self.runtime_action_bar.clone();
+            let client_watch = client.clone();
+            glib::spawn_future_local(async move {
+                while unsaved_rx.changed().await.is_ok() {
+                    let has_unsaved = *unsaved_rx.borrow();
+                    let is_permanent = client_watch.is_permanent_mode();
+                    runtime_action_bar.set_revealed(has_unsaved && !is_permanent);
+                }
+            });
+            
             self.mode_permanent_button.connect_toggled(move |btn| {
                 let is_permanent = btn.is_active();
                 client_mode.set_permanent_mode(is_permanent);
@@ -105,6 +120,9 @@ mod imp {
                 
                 let msg = if is_permanent { "Switched to Permanent Configuration" } else { "Switched to Runtime Configuration" };
                 crate::ui::utils::show_toast(&overlay_mode, msg);
+                
+                let has_unsaved = *client_mode.unsaved_changes_rx.borrow();
+                imp.runtime_action_bar.set_revealed(has_unsaved && !is_permanent);
             });
 
             let client_save = client.clone();
@@ -129,6 +147,19 @@ mod imp {
                     match c.reload_firewall().await {
                         Ok(_) => crate::ui::utils::show_toast(&o, "Firewall reloaded successfully."),
                         Err(e) => crate::ui::utils::show_toast(&o, &format!("Failed to reload firewall: {}", e)),
+                    }
+                });
+            });
+
+            let client_revert = client.clone();
+            let overlay_revert = toast_overlay.clone();
+            self.revert_changes_button.connect_clicked(move |_| {
+                let c = client_revert.clone();
+                let o = overlay_revert.clone();
+                glib::spawn_future_local(async move {
+                    match c.reload_firewall().await {
+                        Ok(_) => crate::ui::utils::show_toast(&o, "Unsaved changes reverted successfully."),
+                        Err(e) => crate::ui::utils::show_toast(&o, &format!("Failed to revert changes: {}", e)),
                     }
                 });
             });
