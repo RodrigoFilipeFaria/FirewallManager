@@ -1,5 +1,5 @@
 use adw::prelude::*;
-use gtk::prelude::*;
+
 use gtk::glib;
 use std::convert::TryFrom;
 use crate::backend::FirewallClient;
@@ -134,11 +134,22 @@ pub async fn load_zone_details(
                                 let overlay = overlay_rm.clone();
 
                                 glib::spawn_future_local(async move {
-                                    match c.remove_service_to_zone(&z, &s).await {
-                                        Ok(_) => {
-                                            load_zone_details(&c, &z, &stack, &listbox, &details, &overlay).await;
+                                    let dialog = adw::AlertDialog::builder()
+                                        .heading(&format!("Remove '{}'?", s))
+                                        .body(&format!("Are you sure you want to remove the service '{}' from the '{}' zone?", s, z))
+                                        .build();
+                                    
+                                    dialog.add_response("cancel", "Cancel");
+                                    dialog.add_response("remove", "Remove");
+                                    dialog.set_response_appearance("remove", adw::ResponseAppearance::Destructive);
+                                    
+                                    if dialog.choose_future(&listbox).await == "remove" {
+                                        match c.remove_service_to_zone(&z, &s).await {
+                                            Ok(_) => {
+                                                load_zone_details(&c, &z, &stack, &listbox, &details, &overlay).await;
+                                            }
+                                            Err(e) => show_toast(&overlay, &format!("Error removing service from zone: {}", e)),
                                         }
-                                        Err(e) => show_toast(&overlay, &format!("Error removing service from zone: {}", e)),
                                     }
                                 });
                             });

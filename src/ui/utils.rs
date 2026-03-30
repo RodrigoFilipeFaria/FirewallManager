@@ -1,5 +1,5 @@
 use adw::prelude::*;
-use gtk::prelude::*;
+
 
 pub fn show_toast(overlay: &adw::ToastOverlay, message: &str) {
     let toast = adw::Toast::builder()

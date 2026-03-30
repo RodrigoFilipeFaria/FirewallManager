@@ -1,19 +1,17 @@
 use adw::prelude::*;
-use gtk::prelude::*;
+
 use gtk::glib;
 use crate::backend::FirewallClient;
 use crate::ui::utils::{show_toast, clear_listbox, parse_ports};
 
-pub fn setup_services(
+pub fn init_services(
     client: FirewallClient,
     toast_overlay: adw::ToastOverlay,
     services_listbox: gtk::ListBox,
     add_service_button: gtk::Button,
     services_search_entry: gtk::SearchEntry,
 ) {
-    let client_for_reload = client.clone();
     let client_for_dialog = client.clone();
-    let overlay = toast_overlay.clone();
     let overlay_dialog = toast_overlay.clone();
 
     let search_entry_clone = services_search_entry.clone();
@@ -32,14 +30,10 @@ pub fn setup_services(
         listbox_search.invalidate_filter();
     });
 
-    glib::spawn_future_local(async move {
-        reload_services(&client_for_reload, &services_listbox, &overlay).await;
-
-        add_service_button.connect_clicked(glib::clone!(
-            #[strong] services_listbox,
-            move |_| show_add_service_dialog(client_for_dialog.clone(), services_listbox.clone(), overlay_dialog.clone())
-        ));
-    });
+    add_service_button.connect_clicked(glib::clone!(
+        #[strong] services_listbox,
+        move |_| show_add_service_dialog(client_for_dialog.clone(), services_listbox.clone(), overlay_dialog.clone())
+    ));
 }
 
 pub async fn reload_services(client: &FirewallClient, listbox: &gtk::ListBox, toast_overlay: &adw::ToastOverlay) {
@@ -134,6 +128,15 @@ pub fn build_service_row(
             }
         });
     });
+
+    let is_perm = client.is_permanent_mode();
+    edit_btn.set_sensitive(is_perm);
+    remove_btn.set_sensitive(is_perm);
+
+    if !is_perm {
+        edit_btn.set_tooltip_text(Some("Switch to Permanent mode to edit"));
+        remove_btn.set_tooltip_text(Some("Switch to Permanent mode to remove"));
+    }
 
     row.add_suffix(&edit_btn);
     row.add_suffix(&remove_btn);

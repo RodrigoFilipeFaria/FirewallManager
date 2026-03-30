@@ -282,7 +282,7 @@
                         <property name="revealed">False</property>
                         <child type="end">
                           <object class="GtkButton" id="make_permanent_button">
-                            <property name="label" translatable="yes">Save</property>
+                            <property name="label" translatable="yes">Save All to Permanent</property>
                             <property name="tooltip-text" translatable="yes">Save runtime configuration changes to disk</property>
                             <property name="valign">center</property>
                             <style>

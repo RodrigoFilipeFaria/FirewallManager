@@ -1,5 +1,5 @@
 use adw::prelude::*;
-use gtk::prelude::*;
+
 use gtk::glib;
 use crate::backend::FirewallClient;
 use crate::ui::utils::{show_toast, clear_listbox};

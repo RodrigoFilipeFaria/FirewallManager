@@ -80,7 +80,22 @@ mod imp {
 
                         imp.setup_firewall_state(&client, &toast_overlay);
                         imp.setup_zones_list(&client, &toast_overlay);
-                        imp.setup_services(&client, &toast_overlay);
+                        imp.init_services(&client, &toast_overlay);
+                        
+                        let is_perm = client.is_permanent_mode();
+                        imp.add_service_button.set_sensitive(is_perm);
+                        if !is_perm {
+                            imp.add_service_button.set_tooltip_text(Some("Switch to Permanent mode to define new services."));
+                        } else {
+                            imp.add_service_button.set_tooltip_text(Some("Add a new custom service definition."));
+                        }
+                        
+                        let c_init = client.clone();
+                        let o_init = toast_overlay.clone();
+                        let l_init = imp.services_listbox.get();
+                        glib::spawn_future_local(async move {
+                            crate::ui::services::reload_services(&c_init, &l_init, &o_init).await;
+                        });
                         imp.setup_navigation(&client, &toast_overlay);
                         imp.setup_modes(&client, &toast_overlay);
                     }
@@ -116,7 +131,20 @@ mod imp {
                 let imp = obj.imp();
                 imp.setup_firewall_state(&client_mode, &overlay_mode);
                 imp.setup_zones_list(&client_mode, &overlay_mode);
-                imp.setup_services(&client_mode, &overlay_mode);
+                
+                imp.add_service_button.set_sensitive(is_permanent);
+                if !is_permanent {
+                    imp.add_service_button.set_tooltip_text(Some("Switch to Permanent mode to define new services."));
+                } else {
+                    imp.add_service_button.set_tooltip_text(Some("Add a new custom service definition."));
+                }
+                
+                let c_reload = client_mode.clone();
+                let o_reload = overlay_mode.clone();
+                let l_reload = imp.services_listbox.get();
+                glib::spawn_future_local(async move {
+                    crate::ui::services::reload_services(&c_reload, &l_reload, &o_reload).await;
+                });
                 
                 let msg = if is_permanent { "Switched to Permanent Configuration" } else { "Switched to Runtime Configuration" };
                 crate::ui::utils::show_toast(&overlay_mode, msg);
@@ -187,8 +215,8 @@ mod imp {
             );
         }
 
-        fn setup_services(&self, client: &FirewallClient, toast_overlay: &adw::ToastOverlay) {
-            crate::ui::services::setup_services(
+        fn init_services(&self, client: &FirewallClient, toast_overlay: &adw::ToastOverlay) {
+            crate::ui::services::init_services(
                 client.clone(),
                 toast_overlay.clone(),
                 self.services_listbox.get(),
