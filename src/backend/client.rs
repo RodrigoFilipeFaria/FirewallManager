@@ -61,6 +61,11 @@ impl FirewallClient {
         proxy.get_default_zone().await
     }
 
+    pub async fn set_default_zone(&self, zone: &str) -> Result<()> {
+        let proxy = FirewalldProxy::new(&self.connection).await?;
+        proxy.set_default_zone(zone).await
+    }
+
     pub async fn fetch_state(&self) -> Result<String> {
         let proxy = FirewalldProxy::new(&self.connection).await?;
         proxy.get_state().await

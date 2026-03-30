@@ -15,6 +15,8 @@ pub type ServiceSettings = (
 pub(crate) trait Firewalld {
     #[zbus(name = "getDefaultZone")]
     fn get_default_zone(&self) -> zbus::Result<String>;
+    #[zbus(name = "setDefaultZone")]
+    fn set_default_zone(&self, zone: &str) -> zbus::Result<()>;
     #[zbus(property, name = "state")]
     fn get_state(&self) -> zbus::Result<String>;
     #[zbus(name = "listServices")]
@@ -45,6 +47,18 @@ pub(crate) trait FirewalldZone {
     fn add_service_zone(&self, zone: &str, service: &str, timeout: i32) -> zbus::Result<String>;
     #[zbus(name = "removeService")]
     fn remove_service_zone(&self, zone: &str, service: &str) -> zbus::Result<String>;
+    #[zbus(name = "addPort")]
+    fn add_port_zone(&self, zone: &str, port: &str, protocol: &str, timeout: i32) -> zbus::Result<String>;
+    #[zbus(name = "removePort")]
+    fn remove_port_zone(&self, zone: &str, port: &str, protocol: &str) -> zbus::Result<String>;
+    #[zbus(name = "addSource")]
+    fn add_source_zone(&self, zone: &str, source: &str) -> zbus::Result<String>;
+    #[zbus(name = "removeSource")]
+    fn remove_source_zone(&self, zone: &str, source: &str) -> zbus::Result<String>;
+    #[zbus(name = "addForwardPort")]
+    fn add_forward_port_zone(&self, zone: &str, port: &str, protocol: &str, toport: &str, toaddr: &str, timeout: i32) -> zbus::Result<String>;
+    #[zbus(name = "removeForwardPort")]
+    fn remove_forward_port_zone(&self, zone: &str, port: &str, protocol: &str, toport: &str, toaddr: &str) -> zbus::Result<String>;
 }
 
 #[proxy(
@@ -86,6 +100,18 @@ pub(crate) trait FirewalldConfigZone {
     fn add_service(&self, service: &str) -> zbus::Result<()>;
     #[zbus(name = "removeService")]
     fn remove_service(&self, service: &str) -> zbus::Result<()>;
+    #[zbus(name = "addPort")]
+    fn add_port(&self, port: &str, protocol: &str) -> zbus::Result<()>;
+    #[zbus(name = "removePort")]
+    fn remove_port(&self, port: &str, protocol: &str) -> zbus::Result<()>;
+    #[zbus(name = "addSource")]
+    fn add_source(&self, source: &str) -> zbus::Result<()>;
+    #[zbus(name = "removeSource")]
+    fn remove_source(&self, source: &str) -> zbus::Result<()>;
+    #[zbus(name = "addForwardPort")]
+    fn add_forward_port(&self, port: &str, protocol: &str, toport: &str, toaddr: &str) -> zbus::Result<()>;
+    #[zbus(name = "removeForwardPort")]
+    fn remove_forward_port(&self, port: &str, protocol: &str, toport: &str, toaddr: &str) -> zbus::Result<()>;
 }
 
 #[proxy(

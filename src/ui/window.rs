@@ -20,6 +20,8 @@ mod imp {
         #[template_child]
         pub load_button: TemplateChild<gtk::Button>,
         #[template_child]
+        pub change_default_zone_button: TemplateChild<gtk::Button>,
+        #[template_child]
         pub state_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub zones_listbox: TemplateChild<gtk::ListBox>,
@@ -199,6 +201,7 @@ mod imp {
                 toast_overlay.clone(),
                 self.state_label.get(),
                 self.load_button.get(),
+                self.change_default_zone_button.get(),
                 self.status_page.get(),
                 self.interfaces_listbox.get(),
             );

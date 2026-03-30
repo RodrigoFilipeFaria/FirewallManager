@@ -116,6 +116,12 @@
                                     <property name="css-classes">pill suggested-action</property>
                                   </object>
                                 </child>
+                                <child>
+                                  <object class="GtkButton" id="change_default_zone_button">
+                                    <property name="label" translatable="yes">Change Default Zone</property>
+                                    <property name="css-classes">pill</property>
+                                  </object>
+                                </child>
                               </object>
                             </child>
 

@@ -113,4 +113,100 @@ impl FirewallClient {
             Ok(res)
         }
     }
+
+    pub async fn add_port_to_zone(&self, zone: &str, port: &str, protocol: &str, timeout: i32) -> Result<String> {
+        if self.is_permanent_mode() {
+            let config_proxy = FirewalldConfigProxy::new(&self.connection).await?;
+            let path = config_proxy.get_zone_by_name(zone).await?;
+            let zp = FirewalldConfigZoneProxy::builder(&self.connection).path(path)?.build().await?;
+            zp.add_port(port, protocol).await?;
+            self.reload_firewall().await?;
+            Ok("".to_string())
+        } else {
+            let proxy = FirewalldZoneProxy::new(&self.connection).await?;
+            let res = proxy.add_port_zone(zone, port, protocol, timeout).await?;
+            self.mark_unsaved();
+            Ok(res)
+        }
+    }
+
+    pub async fn remove_port_from_zone(&self, zone: &str, port: &str, protocol: &str) -> Result<String> {
+        if self.is_permanent_mode() {
+            let config_proxy = FirewalldConfigProxy::new(&self.connection).await?;
+            let path = config_proxy.get_zone_by_name(zone).await?;
+            let zp = FirewalldConfigZoneProxy::builder(&self.connection).path(path)?.build().await?;
+            zp.remove_port(port, protocol).await?;
+            self.reload_firewall().await?;
+            Ok("".to_string())
+        } else {
+            let proxy = FirewalldZoneProxy::new(&self.connection).await?;
+            let res = proxy.remove_port_zone(zone, port, protocol).await?;
+            self.mark_unsaved();
+            Ok(res)
+        }
+    }
+
+    pub async fn add_source_to_zone(&self, zone: &str, source: &str) -> Result<String> {
+        if self.is_permanent_mode() {
+            let config_proxy = FirewalldConfigProxy::new(&self.connection).await?;
+            let path = config_proxy.get_zone_by_name(zone).await?;
+            let zp = FirewalldConfigZoneProxy::builder(&self.connection).path(path)?.build().await?;
+            zp.add_source(source).await?;
+            self.reload_firewall().await?;
+            Ok("".to_string())
+        } else {
+            let proxy = FirewalldZoneProxy::new(&self.connection).await?;
+            let res = proxy.add_source_zone(zone, source).await?;
+            self.mark_unsaved();
+            Ok(res)
+        }
+    }
+
+    pub async fn remove_source_from_zone(&self, zone: &str, source: &str) -> Result<String> {
+        if self.is_permanent_mode() {
+            let config_proxy = FirewalldConfigProxy::new(&self.connection).await?;
+            let path = config_proxy.get_zone_by_name(zone).await?;
+            let zp = FirewalldConfigZoneProxy::builder(&self.connection).path(path)?.build().await?;
+            zp.remove_source(source).await?;
+            self.reload_firewall().await?;
+            Ok("".to_string())
+        } else {
+            let proxy = FirewalldZoneProxy::new(&self.connection).await?;
+            let res = proxy.remove_source_zone(zone, source).await?;
+            self.mark_unsaved();
+            Ok(res)
+        }
+    }
+
+    pub async fn add_forward_port_to_zone(&self, zone: &str, port: &str, protocol: &str, toport: &str, toaddr: &str, timeout: i32) -> Result<String> {
+        if self.is_permanent_mode() {
+            let config_proxy = FirewalldConfigProxy::new(&self.connection).await?;
+            let path = config_proxy.get_zone_by_name(zone).await?;
+            let zp = FirewalldConfigZoneProxy::builder(&self.connection).path(path)?.build().await?;
+            zp.add_forward_port(port, protocol, toport, toaddr).await?;
+            self.reload_firewall().await?;
+            Ok("".to_string())
+        } else {
+            let proxy = FirewalldZoneProxy::new(&self.connection).await?;
+            let res = proxy.add_forward_port_zone(zone, port, protocol, toport, toaddr, timeout).await?;
+            self.mark_unsaved();
+            Ok(res)
+        }
+    }
+
+    pub async fn remove_forward_port_from_zone(&self, zone: &str, port: &str, protocol: &str, toport: &str, toaddr: &str) -> Result<String> {
+        if self.is_permanent_mode() {
+            let config_proxy = FirewalldConfigProxy::new(&self.connection).await?;
+            let path = config_proxy.get_zone_by_name(zone).await?;
+            let zp = FirewalldConfigZoneProxy::builder(&self.connection).path(path)?.build().await?;
+            zp.remove_forward_port(port, protocol, toport, toaddr).await?;
+            self.reload_firewall().await?;
+            Ok("".to_string())
+        } else {
+            let proxy = FirewalldZoneProxy::new(&self.connection).await?;
+            let res = proxy.remove_forward_port_zone(zone, port, protocol, toport, toaddr).await?;
+            self.mark_unsaved();
+            Ok(res)
+        }
+    }
 }
